@@ -24,6 +24,8 @@
 
 ## 快速开始
 
+完整批量教程见 [docs/tutorial.md](docs/tutorial.md)。
+
 准备控制机：
 
 ```bash

@@ -10,6 +10,8 @@ It does not redistribute vendor driver packages, store real lab inventories, rep
 
 ## Quick Start
 
+For a detailed batch onboarding walkthrough, see [docs/tutorial.md](docs/tutorial.md).
+
 ```bash
 git clone https://github.com/vbhsjd/storctl-compose.git
 cd storctl-compose
