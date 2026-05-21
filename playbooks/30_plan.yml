@@ -1,0 +1,22 @@
+---
+- name: Preview storctl apply configuration
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+    storctl_profile_file: "{{ storctl_profile_file | default('/etc/storctl/profiles.json') }}"
+  tasks:
+    - name: Run storctl plan
+      ansible.builtin.command: >
+        {{ storctl_remote_bin }} plan
+        --profile-file {{ storctl_profile_file }}
+        --profile {{ storage_profile }}
+        --nic {{ storage_nic }}
+        --nic-type {{ nic_type | default('auto') }}
+        --mgmt-ip {{ ansible_host }}
+      register: storctl_plan
+      changed_when: false
+
+    - name: Show plan
+      ansible.builtin.debug:
+        var: storctl_plan.stdout_lines

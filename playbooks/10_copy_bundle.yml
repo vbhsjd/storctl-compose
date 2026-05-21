@@ -1,0 +1,41 @@
+---
+- name: Copy storctl bundle inputs
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_local_bin: "{{ storctl_local_bin | default('./dist/storctl-linux-arm64') }}"
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+    storctl_profile_src: "{{ storctl_profile_src | default('./storctl-profiles.json') }}"
+    storctl_profile_file: "{{ storctl_profile_file | default('/etc/storctl/profiles.json') }}"
+    storctl_artifact_src: "{{ storctl_artifact_src | default('./drivers') }}"
+    storctl_artifact_dir: "{{ storctl_artifact_dir | default('/root/storage_pkgs') }}"
+  tasks:
+    - name: Create storctl config directory
+      ansible.builtin.file:
+        path: "{{ storctl_profile_file | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create artifact directory
+      ansible.builtin.file:
+        path: "{{ storctl_artifact_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy storctl binary
+      ansible.builtin.copy:
+        src: "{{ storctl_local_bin }}"
+        dest: "{{ storctl_remote_bin }}"
+        mode: "0755"
+
+    - name: Copy profile file
+      ansible.builtin.copy:
+        src: "{{ storctl_profile_src }}"
+        dest: "{{ storctl_profile_file }}"
+        mode: "0644"
+
+    - name: Copy offline artifacts
+      ansible.builtin.copy:
+        src: "{{ storctl_artifact_src }}/"
+        dest: "{{ storctl_artifact_dir }}/"
+        mode: preserve

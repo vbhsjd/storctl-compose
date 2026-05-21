@@ -1,0 +1,15 @@
+---
+- name: Collect storctl facts
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+  tasks:
+    - name: Run storctl facts
+      ansible.builtin.command: "{{ storctl_remote_bin }} facts --json"
+      register: storctl_facts
+      changed_when: false
+
+    - name: Show storctl facts
+      ansible.builtin.debug:
+        var: storctl_facts.stdout

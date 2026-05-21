@@ -1,0 +1,27 @@
+---
+- name: Check storctl storage onboarding
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+    storctl_report_dir: "{{ storctl_report_dir | default('./reports') }}"
+  tasks:
+    - name: Run storctl check JSON
+      ansible.builtin.command: "{{ storctl_remote_bin }} check --json"
+      register: storctl_check
+      changed_when: false
+
+    - name: Create local report directory
+      ansible.builtin.file:
+        path: "{{ storctl_report_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Save host report locally
+      ansible.builtin.copy:
+        content: "{{ storctl_check.stdout }}\n"
+        dest: "{{ storctl_report_dir }}/{{ inventory_hostname }}.json"
+        mode: "0644"
+      delegate_to: localhost

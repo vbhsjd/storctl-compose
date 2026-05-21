@@ -1,0 +1,24 @@
+---
+- name: Apply storctl storage onboarding
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+    storctl_profile_file: "{{ storctl_profile_file | default('/etc/storctl/profiles.json') }}"
+    storctl_qos: "{{ storctl_qos | default('off') }}"
+  tasks:
+    - name: Run storctl apply
+      ansible.builtin.command: >
+        {{ storctl_remote_bin }} apply
+        --profile-file {{ storctl_profile_file }}
+        --profile {{ storage_profile }}
+        --nic {{ storage_nic }}
+        --nic-type {{ nic_type | default('auto') }}
+        --mgmt-ip {{ ansible_host }}
+        --qos {{ storctl_qos }}
+      register: storctl_apply
+      changed_when: true
+
+    - name: Show apply result
+      ansible.builtin.debug:
+        var: storctl_apply.stdout_lines

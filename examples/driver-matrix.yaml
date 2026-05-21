@@ -1,0 +1,19 @@
+drivers:
+  - os_id: openEuler
+    os_version_prefix: "22.03"
+    arch: aarch64
+    nic_type: "1823"
+    file: "SDK_LINUX-example-openEuler22.03-aarch64.tar.gz"
+    sha256: "replace-with-real-sha256"
+    requires_repo: false
+    tested: false
+    notes: "example only; do not commit vendor packages"
+  - os_id: openEuler
+    os_version_prefix: "24.03"
+    arch: aarch64
+    nic_type: cx7
+    file: "MLNX_OFED_LINUX-example-openEuler24.03-aarch64.tgz"
+    sha256: "replace-with-real-sha256"
+    requires_repo: false
+    tested: false
+    notes: "example only; DOCA host RPMs may require requires_repo=true"

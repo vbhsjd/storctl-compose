@@ -1,0 +1,19 @@
+---
+- name: Install local NIC driver artifacts
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+    storctl_artifact_dir: "{{ storctl_artifact_dir | default('/root/storage_pkgs') }}"
+  tasks:
+    - name: Install driver from local artifacts
+      ansible.builtin.command: >
+        {{ storctl_remote_bin }} install-driver
+        --nic-type {{ nic_type }}
+        --artifact-dir {{ storctl_artifact_dir }}
+      register: install_driver
+      changed_when: "'OK driver' in install_driver.stdout or 'REBOOT_REQUIRED' in install_driver.stdout"
+
+    - name: Show driver result
+      ansible.builtin.debug:
+        var: install_driver.stdout_lines

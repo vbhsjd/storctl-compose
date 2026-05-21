@@ -1,0 +1,8 @@
+.DS_Store
+.ansible/
+*.retry
+bundles/
+dist/
+drivers/
+reports/
+tmp/
