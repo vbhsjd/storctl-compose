@@ -48,8 +48,8 @@ cp /path/to/storctl-linux-arm64 dist/
 ```text
 drivers/
   storctl-artifacts.json
-  SDK_LINUX-xxx-openEuler22.03-aarch64.tar.gz
-  MLNX_OFED_LINUX-xxx-openEuler24.03-aarch64.tgz
+  SDK_LINUX-xxx-openEuler22.03SP4-aarch64.tar.gz
+  MLNX_OFED_LINUX-xxx-openEuler24.03SP2-aarch64.tgz
 ```
 
 ## 3. 准备 inventory
@@ -147,10 +147,10 @@ inventory 适合放“每台机器不同”的东西：
 ```yaml
 drivers:
   - os_id: openEuler
-    os_version_prefix: "22.03"
+    os_version_prefix: "22.03-LTS-SP4"
     arch: aarch64
     nic_type: "1823"
-    file: "SDK_LINUX-xxx-openEuler22.03-aarch64.tar.gz"
+    file: "SDK_LINUX-xxx-openEuler22.03SP4-aarch64.tar.gz"
     sha256: "real-sha256"
     requires_repo: false
     tested: true
@@ -427,4 +427,3 @@ ansible-playbook -i inventory.ini playbooks/40_apply.yml -e storctl_qos=apply
 - 真实 `driver-matrix.yaml`。
 - 真实驱动包和 `storctl-artifacts.json`。
 - 每次上线后的 `reports/` 归档。
-

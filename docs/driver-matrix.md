@@ -7,10 +7,10 @@
 ```yaml
 drivers:
   - os_id: openEuler
-    os_version_prefix: "22.03"
+    os_version_prefix: "22.03-LTS-SP4"
     arch: aarch64
     nic_type: "1823"
-    file: "SDK_LINUX-xx-openEuler22.03-aarch64.tar.gz"
+    file: "SDK_LINUX-xx-openEuler22.03SP4-aarch64.tar.gz"
     sha256: "replace-with-real-sha256"
     requires_repo: false
     tested: false
