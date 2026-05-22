@@ -50,6 +50,22 @@ flowchart TD
   G --> H["Collect cluster report"]
 ```
 
+## Local Simulation
+
+Run the high-fidelity control-plane simulator without real RDMA hardware, NFS servers, or NetworkManager:
+
+```bash
+./tests/sim/run.sh
+```
+
+For a standalone `storctl-compose` clone:
+
+```bash
+STORCTL_SOURCE_DIR=/path/to/storctl ./tests/sim/run.sh
+```
+
+The simulator uses `STORCTL_SIM_ROOT` plus fake commands under `tests/sim/fakebin` to cover OS/SP detection, artifact selection, 1823/CX7 install flows, VLAN, QoS, RDMA/TCP fallback, multi-mount persistence, state/check/facts, and management NIC protection. It does not validate real firmware, kernel modules, or RDMA performance. See [docs/simulation.md](docs/simulation.md).
+
 ## Safety
 
 - Do not commit vendor driver packages.

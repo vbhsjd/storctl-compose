@@ -9,8 +9,33 @@ jobs:
   static:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout storctl-compose
+        uses: actions/checkout@v4
+        with:
+          path: storctl-compose
+
+      - name: Checkout storctl
+        uses: actions/checkout@v4
+        with:
+          repository: vbhsjd/storctl
+          path: storctl
+
       - name: Check shell syntax
-        run: bash -n scripts/*.sh
+        working-directory: storctl-compose
+        run: bash -n scripts/*.sh tests/sim/run.sh tests/sim/fakebin/*
+
       - name: Check example JSON
+        working-directory: storctl-compose
         run: python3 -m json.tool examples/storctl-profiles.json >/dev/null
+
+      - name: Ansible syntax check
+        working-directory: storctl-compose
+        run: |
+          python3 -m pip install --user ansible-core
+          ansible-playbook -i examples/inventory.ini --syntax-check playbooks/*.yml
+
+      - name: Simulation suite
+        working-directory: storctl-compose
+        env:
+          STORCTL_SOURCE_DIR: ${{ github.workspace }}/storctl
+        run: ./tests/sim/run.sh

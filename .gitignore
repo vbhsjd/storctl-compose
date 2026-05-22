@@ -6,3 +6,4 @@ dist/
 drivers/
 reports/
 tmp/
+tests/sim/.work/

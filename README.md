@@ -70,6 +70,18 @@ flowchart TD
   G --> H["Collect cluster report"]
 ```
 
+## 本机模拟测试
+
+仓库内置高保真控制面模拟器，可在没有 RDMA 网卡、NFS server、NetworkManager 的本机跑完整流程：
+
+```bash
+./tests/sim/run.sh
+```
+
+模拟器通过 `STORCTL_SIM_ROOT` 把 `/etc/os-release`、`/sys/class/net`、`/etc/fstab`、`/etc/systemd/system`、`/var/lib/storctl` 重定向到临时 node root，并用 `tests/sim/fakebin` 模拟 `nmcli`、`rdma`、`mount`、`systemctl`、`hinicadm3`、`ibdev2netdev` 等命令。它覆盖 OS/SP 匹配、驱动包选择、1823/CX7 安装流程、VLAN、QoS、RDMA/TCP fallback、多挂载点、systemd/fstab、state/check/facts 和管理网卡误选保护。
+
+这不是性能测试，也不会验证真实固件刷写或内核驱动加载；最终仍需要 1823/CX7 真机 smoke test。详细说明见 [docs/simulation.md](docs/simulation.md)。
+
 ## Inventory 变量
 
 每台机器至少需要：
