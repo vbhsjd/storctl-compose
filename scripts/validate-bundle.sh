@@ -8,9 +8,8 @@ if [[ -z "$bundle_dir" || "$bundle_dir" == "-h" || "$bundle_dir" == "--help" ]];
 fi
 
 required=(
-  "storctl-linux-arm64"
+  "storctl-compose"
   "storctl-profiles.json"
-  "driver-matrix.yaml"
   "drivers"
   "checksums.txt"
 )

@@ -1,74 +1,60 @@
 # storctl-compose
 
-`storctl-compose` is the Ansible-based companion repository for [`storctl`](https://github.com/vbhsjd/storctl). It composes the `storctl` binary, profiles, driver manifests, offline artifact directories, and playbooks for batch NFS-RDMA storage onboarding.
+`storctl-compose` is the batch companion for `storctl`: a single Go binary that connects to hosts over SSH/SFTP, copies `storctl`, profiles, and offline driver artifacts, then auto-tries 1823 NICs until storage is mounted.
 
-## Boundaries
+No Ansible, sshpass, Python, or hand-written storage NIC names are required.
 
-This repository provides Ansible playbooks, public examples, offline bundle scripts, and cluster report collection from `storctl check --json`.
+## Fast Start
 
-It does not redistribute vendor driver packages, store real lab inventories, replace `storctl`, or implement a custom SSH orchestration system.
+Prepare:
 
-## Quick Start
-
-For a detailed batch onboarding walkthrough, see [docs/tutorial.md](docs/tutorial.md).
+- `hosts.yaml`: host IP, root user, password or key.
+- `compose.yaml`: profile, local driver directory, remote paths.
+- `drivers/`: offline 1823 driver packages and `storctl-artifacts.json`.
 
 ```bash
-git clone https://github.com/vbhsjd/storctl-compose.git
-cd storctl-compose
-cp examples/inventory.ini inventory.ini
+cp examples/hosts.yaml hosts.yaml
+cp examples/compose.yaml compose.yaml
 cp examples/storctl-profiles.json storctl-profiles.json
+mkdir -p drivers reports
 ```
+
+Run:
 
 ```bash
-./scripts/build-bundle.sh \
-  --storctl ./dist/storctl-linux-arm64 \
-  --profiles ./storctl-profiles.json \
-  --matrix ./examples/driver-matrix.yaml \
-  --drivers ./drivers \
-  --out ./bundles \
-  --name c4-openeuler22-aarch64
+storctl-compose copy --hosts hosts.yaml --config compose.yaml
+storctl-compose install-driver --hosts hosts.yaml --config compose.yaml
+storctl-compose apply --hosts hosts.yaml --config compose.yaml
+storctl-compose check --hosts hosts.yaml --config compose.yaml
+storctl-compose report --report-dir reports
 ```
+
+## Commands
 
 ```bash
-ansible-playbook -i inventory.ini playbooks/10_copy_bundle.yml
-ansible-playbook -i inventory.ini playbooks/20_install_driver.yml
-ansible-playbook -i inventory.ini playbooks/30_plan.yml
-ansible-playbook -i inventory.ini playbooks/40_apply.yml
-ansible-playbook -i inventory.ini playbooks/50_check.yml
+storctl-compose copy             # upload storctl, profile, drivers
+storctl-compose install-driver   # install 1823 driver explicitly; no auto reboot
+storctl-compose apply            # auto-select 1823 NIC and mount storage
+storctl-compose check            # collect storctl check --json
+storctl-compose report           # summarize reports/
+storctl-compose version --json
 ```
 
-## Workflow
-
-```mermaid
-flowchart TD
-  A["Prepare storctl-compose bundle"] --> B["Copy bundle to hosts"]
-  B --> C["storctl facts --json"]
-  C --> D["storctl install-driver"]
-  D --> E["storctl plan"]
-  E --> F["storctl apply"]
-  F --> G["storctl check --json"]
-  G --> H["Collect cluster report"]
-```
-
-## Local Simulation
-
-Run the high-fidelity control-plane simulator without real RDMA hardware, NFS servers, or NetworkManager:
+Useful flags:
 
 ```bash
-./tests/sim/run.sh
+--concurrency 30
+--limit node-a,node-b
+--upgrade-firmware
 ```
 
-For a standalone `storctl-compose` clone:
+## Notes
 
-```bash
-STORCTL_SOURCE_DIR=/path/to/storctl ./tests/sim/run.sh
-```
+- Only 1823 orchestration is supported; use `storctl` directly for CX7.
+- Targets must allow root SSH login.
+- `apply` never installs drivers; run `install-driver` first.
+- TCP fallback is enabled by default and reported as degraded.
+- Real driver packages are not stored in the public repo or public releases.
+- Release binaries embed `storctl-linux-arm64`; source builds may set `storctl_bin` in `compose.yaml`.
 
-The simulator uses `STORCTL_SIM_ROOT` plus fake commands under `tests/sim/fakebin` to cover OS/SP detection, artifact selection, 1823/CX7 install flows, VLAN, QoS, RDMA/TCP fallback, multi-mount persistence, state/check/facts, and management NIC protection. It does not validate real firmware, kernel modules, or RDMA performance. See [docs/simulation.md](docs/simulation.md).
-
-## Safety
-
-- Do not commit vendor driver packages.
-- Do not commit real lab inventories.
-- Automation should consume `storctl check --json`, not human text.
-- `storctl` remains the single-host command; Ansible handles multi-host orchestration.
+See [docs/tutorial.md](docs/tutorial.md) for details.

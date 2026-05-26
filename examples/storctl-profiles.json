@@ -16,13 +16,13 @@
       },
       "mounts": [
         {
-          "server": "172.27.1.1",
+          "server": "172.27.0.50",
           "export": "/Share",
           "mount_point": "/mnt/share"
         },
         {
-          "server": "172.27.1.1",
-          "export": "/Weight",
+          "server": "172.27.0.50",
+          "export": "/CommonRO",
           "mount_point": "/mnt/weight"
         }
       ]

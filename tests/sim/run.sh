@@ -83,7 +83,7 @@ assert_report_contains() {
   local node="$1" step="$2" pattern="$3" label="$4"
   local out="${work}/reports/${node}/${step}.out"
   local err="${work}/reports/${node}/${step}.err"
-  if cat "${out}" "${err}" 2>/dev/null | grep -Eq "${pattern}"; then
+  if grep -Eq "${pattern}" "${out}" "${err}" 2>/dev/null; then
     record_pass "${node}:${label}"
   else
     record_fail "${node}:${label} missing ${pattern}"
@@ -103,9 +103,13 @@ EOF
 }
 
 add_iface() {
-  local root="$1" name="$2" state="$3" addrs="${4:-}"
+  local root="$1" name="$2" state="$3" addrs="${4:-}" driver="${5:-hinic3}" speed="${6:-200000}" carrier="${7:-1}"
   mkdir -p "${root}/sys/class/net/${name}"
+  mkdir -p "${root}/sys/class/net/${name}/device"
   printf '%s\n' "${state}" > "${root}/sys/class/net/${name}/operstate"
+  printf '%s\n' "${driver}" > "${root}/sys/class/net/${name}/driver_name"
+  printf '%s\n' "${speed}" > "${root}/sys/class/net/${name}/speed"
+  printf '%s\n' "${carrier}" > "${root}/sys/class/net/${name}/carrier"
   [[ -n "${addrs}" ]] && printf '%s\n' "${addrs}" > "${root}/sys/class/net/${name}/ipv4_addrs"
 }
 
@@ -223,7 +227,7 @@ setup_1823_node() {
   write_os_release "${root}" "22.03" "22.03 (LTS-SP4)" "openEuler 22.03 (LTS-SP4)"
   [[ "${systemd}" == "yes" ]] && mkdir -p "${root}/run/systemd/system"
   add_iface "${root}" "enp23s0f1" "up"
-  add_iface "${root}" "ethmgmt0" "up" "80.5.17.113/22"
+  add_iface "${root}" "ethmgmt0" "up" "80.5.17.113/22" "e1000e" "1000" "1"
   write_profile "${root}"
   write_artifacts_1823_sp4 "${root}"
   printf 'Card num:1\nhinic0(CAL_2X200G_INTERNET)\n' > "${root}/sim/hinicadm3_info"
@@ -235,8 +239,8 @@ setup_cx7_node() {
   local root="${work}/nodes/${name}"
   mkdir -p "${root}/sim" "${root}/run/systemd/system"
   write_os_release "${root}" "24.03" "24.03 (LTS-SP2)" "openEuler 24.03 (LTS-SP2)"
-  add_iface "${root}" "enp194s0f1np1" "up"
-  add_iface "${root}" "ethmgmt0" "up" "80.5.21.122/22"
+  add_iface "${root}" "enp194s0f1np1" "up" "" "mlx5_core"
+  add_iface "${root}" "ethmgmt0" "up" "80.5.21.122/22" "e1000e" "1000" "1"
   write_profile "${root}"
   write_artifacts_cx7_sp2 "${root}"
   printf 'mlx5_1 port 1 ==> enp194s0f1np1 (Up)\n' > "${root}/sim/ibdev2netdev"
@@ -365,6 +369,7 @@ run_suite() {
   assert_report_contains "ambiguous-artifact" "install-driver" 'ambiguous artifacts' "ambiguous artifact detected"
   run_step "sha-mismatch" "install-driver" fail "${bin}" install-driver --nic-type 1823 --artifact-dir /root/storage_pkgs
   assert_report_contains "sha-mismatch" "install-driver" 'sha256 mismatch' "sha mismatch detected"
+
 }
 
 prepare

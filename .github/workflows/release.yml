@@ -1,0 +1,86 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout storctl-compose
+        uses: actions/checkout@v4
+        with:
+          path: storctl-compose
+
+      - name: Checkout storctl
+        uses: actions/checkout@v4
+        with:
+          repository: vbhsjd/storctl
+          path: storctl
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build embedded storctl
+        working-directory: storctl
+        run: |
+          mkdir -p dist
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          storctl_commit="$(git rev-parse HEAD)"
+          GOOS=linux GOARCH=arm64 go build \
+            -ldflags "-X main.version=${GITHUB_REF_NAME} -X main.commit=${storctl_commit} -X main.builtAt=${built_at}" \
+            -o dist/storctl-linux-arm64 ./cmd/storctl
+          cp dist/storctl-linux-arm64 ../storctl-compose/internal/assets/storctl-linux-arm64
+
+      - name: Build storctl-compose
+        working-directory: storctl-compose
+        run: |
+          mkdir -p dist
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for arch in arm64 amd64; do
+            GOOS=linux GOARCH="${arch}" go build \
+              -ldflags "-X main.version=${GITHUB_REF_NAME} -X main.commit=${GITHUB_SHA} -X main.builtAt=${built_at}" \
+              -o "dist/storctl-compose-linux-${arch}" ./cmd/storctl-compose
+            sha256sum "dist/storctl-compose-linux-${arch}" > "dist/storctl-compose-linux-${arch}.sha256"
+          done
+
+      - name: Package release zips
+        working-directory: storctl-compose
+        run: |
+          for arch in arm64 amd64; do
+            pkg="storctl-compose-${GITHUB_REF_NAME}-linux-${arch}"
+            mkdir -p "dist/${pkg}"
+            cp "dist/storctl-compose-linux-${arch}" "dist/${pkg}/"
+            cp "dist/storctl-compose-linux-${arch}.sha256" "dist/${pkg}/"
+            cp README.md README.en.md CHANGELOG.md LICENSE "dist/${pkg}/"
+            cp -R examples "dist/${pkg}/examples"
+            cp -R docs "dist/${pkg}/docs"
+            (cd dist && zip -r "${pkg}.zip" "${pkg}")
+          done
+
+      - name: Release notes
+        working-directory: storctl-compose
+        run: |
+          awk '
+            /^## / && seen {exit}
+            /^## / {seen=1}
+            seen {print}
+          ' CHANGELOG.md > dist/release-notes.md
+
+      - name: Create GitHub release
+        working-directory: storctl-compose
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file dist/release-notes.md \
+            dist/storctl-compose-${GITHUB_REF_NAME}-linux-arm64.zip \
+            dist/storctl-compose-${GITHUB_REF_NAME}-linux-amd64.zip

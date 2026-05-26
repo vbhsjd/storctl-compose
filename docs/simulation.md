@@ -2,6 +2,8 @@
 
 `storctl-compose/tests/sim/run.sh` 用来在没有真实实验室机器时跑 `storctl` 的控制面集成测试。它的目标是覆盖 90% 以上的可模拟场景：配置解析、OS/SP 识别、artifact 匹配、驱动安装命令、NetworkManager VLAN、QoS、RDMA/TCP fallback、多挂载点、持久化和状态检查。
 
+`storctl-compose` 的 Go 批量逻辑（SSH/SFTP、候选网卡筛选、多候选尝试、报告汇总）由 Go 单元测试覆盖。模拟套件保留在 `storctl` 控制面这一层，避免重新引入旧版 Ansible/shell 自动选卡路径。
+
 ## 运行
 
 在 `storctl` 仓库内嵌的 `storctl-compose` 目录中：
@@ -61,7 +63,7 @@ STORCTL_SIM_ROOT=/tmp/storctl-sim/node-1
 
 ```text
 nmcli rdma hinicadm3 ibdev2netdev mlnx_qos cma_roce_tos
-findmnt nfsstat systemctl mount umount modprobe tar rpm dnf dracut ip
+findmnt nfsstat systemctl mount umount modprobe tar rpm dnf dracut ip ethtool
 ```
 
 所有调用都会写入：
@@ -83,6 +85,14 @@ $STORCTL_SIM_ROOT/var/log/storctl-sim/commands.log
 - 同等具体度 artifact ambiguous 失败。
 - sha256 mismatch 失败。
 - `doca-host*.rpm` 未传 `--allow-repo` 时失败。
+- 已有 `data0.<vlan>` 时修正 VLAN parent 到当前候选网卡。
+
+Go 单元测试额外覆盖：
+
+- compose 自动选卡：多个 1823 候选口时第一个失败、第二个成功。
+- compose 自动选卡：无 1823 候选口时报 `no_candidate_nic`。
+- 管理 IP 所在网卡被排除。
+- TCP fallback 成功时整体成功但报告 degraded。
 
 ## 边界
 

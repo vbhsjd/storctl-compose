@@ -1,0 +1,27 @@
+---
+- name: Auto-apply storctl storage onboarding on 1823 NICs
+  hosts: storage
+  gather_facts: false
+  vars:
+    storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
+    storctl_profile_file: "{{ storctl_profile_file | default('/etc/storctl/profiles.json') }}"
+    storctl_qos: "{{ storctl_qos | default('off') }}"
+    storctl_allow_tcp_fallback: "{{ storctl_allow_tcp_fallback | default(true) }}"
+    storctl_auto_log_dir: "{{ storctl_auto_log_dir | default('/var/lib/storctl-compose/apply') }}"
+  tasks:
+    - name: Auto-discover and try 1823 storage NICs
+      ansible.builtin.script: ../scripts/apply-auto-1823.sh
+      environment:
+        STORCTL_BIN: "{{ storctl_remote_bin }}"
+        STORCTL_PROFILE_FILE: "{{ storctl_profile_file }}"
+        STORCTL_PROFILE: "{{ storage_profile }}"
+        STORCTL_MGMT_IP: "{{ ansible_host }}"
+        STORCTL_QOS: "{{ storctl_qos }}"
+        STORCTL_ALLOW_TCP_FALLBACK: "{{ '1' if storctl_allow_tcp_fallback | bool else '0' }}"
+        STORCTL_LOG_DIR: "{{ storctl_auto_log_dir }}"
+      register: storctl_apply
+      changed_when: true
+
+    - name: Show apply result
+      ansible.builtin.debug:
+        var: storctl_apply.stdout_lines

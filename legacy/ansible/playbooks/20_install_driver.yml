@@ -5,12 +5,14 @@
   vars:
     storctl_remote_bin: "{{ storctl_remote_bin | default('/usr/local/bin/storctl') }}"
     storctl_artifact_dir: "{{ storctl_artifact_dir | default('/root/storage_pkgs') }}"
+    storctl_upgrade_firmware: "{{ storctl_upgrade_firmware | default(false) }}"
   tasks:
     - name: Install driver from local artifacts
       ansible.builtin.command: >
         {{ storctl_remote_bin }} install-driver
-        --nic-type {{ nic_type }}
+        --nic-type 1823
         --artifact-dir {{ storctl_artifact_dir }}
+        {{ '--upgrade-firmware' if storctl_upgrade_firmware | bool else '' }}
       register: install_driver
       changed_when: "'OK driver' in install_driver.stdout or 'REBOOT_REQUIRED' in install_driver.stdout"
 

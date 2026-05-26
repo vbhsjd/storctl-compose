@@ -7,3 +7,7 @@ drivers/
 reports/
 tmp/
 tests/sim/.work/
+hosts.yaml
+compose.yaml
+/storctl-compose
+/dist/
