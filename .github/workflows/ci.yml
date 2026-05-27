@@ -43,18 +43,34 @@ jobs:
           GOOS=linux GOARCH=arm64 go build -o dist/storctl-compose-linux-arm64 ./cmd/storctl-compose
           GOOS=linux GOARCH=amd64 go build -o dist/storctl-compose-linux-amd64 ./cmd/storctl-compose
 
+      - name: Build target storctl
+        working-directory: storctl
+        run: |
+          GOOS=linux GOARCH=arm64 go build -o dist/storctl-linux-arm64 ./cmd/storctl
+
       - name: Check package contents
         working-directory: storctl-compose
         run: |
-          sha256sum dist/storctl-compose-linux-arm64 > dist/storctl-compose-linux-arm64.sha256
           mkdir -p dist/pkg/examples
-          cp dist/storctl-compose-linux-arm64 dist/pkg/
-          cp dist/storctl-compose-linux-arm64.sha256 dist/pkg/
+          cp dist/storctl-compose-linux-arm64 dist/pkg/storctl-compose
+          cp ../storctl/dist/storctl-linux-arm64 dist/pkg/storctl-linux-arm64
+          (cd dist/pkg && sha256sum storctl-compose > storctl-compose.sha256)
+          (cd dist/pkg && sha256sum storctl-linux-arm64 > storctl-linux-arm64.sha256)
+          cp examples/hosts.yaml dist/pkg/hosts.yaml.example
+          cp examples/compose.yaml dist/pkg/compose.yaml
+          cp examples/storctl-profiles.json dist/pkg/storctl-profiles.json
+          cp examples/storctl-artifacts.example.json dist/pkg/storctl-artifacts.example.json
           cp README.md README.en.md CHANGELOG.md LICENSE dist/pkg/
           cp -R examples/. dist/pkg/examples/
           cp -R docs dist/pkg/docs
-          test -f dist/pkg/storctl-compose-linux-arm64
-          test -f dist/pkg/storctl-compose-linux-arm64.sha256
+          test -f dist/pkg/storctl-compose
+          test -f dist/pkg/storctl-compose.sha256
+          test -f dist/pkg/storctl-linux-arm64
+          test -f dist/pkg/storctl-linux-arm64.sha256
+          test -f dist/pkg/hosts.yaml.example
+          test -f dist/pkg/compose.yaml
+          test -f dist/pkg/storctl-profiles.json
+          test -f dist/pkg/storctl-artifacts.example.json
           test -f dist/pkg/README.md
           test -f dist/pkg/README.en.md
           test -f dist/pkg/CHANGELOG.md

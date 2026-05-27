@@ -8,6 +8,7 @@
 - Automatic 1823 NIC discovery and per-candidate apply attempts.
 - Password and key-file host authentication in `hosts.yaml`.
 - Release workflow that embeds `storctl-linux-arm64` into `storctl-compose`.
+- Fast-start release layout with root-level templates and standalone `storctl-linux-arm64`.
 - Initial Ansible-based companion repository for `storctl`.
 - Example inventory, profile, and driver matrix files.
 - Offline bundle, validation, and report collection scripts.
@@ -19,3 +20,4 @@
 
 - Ansible wrapper and playbooks moved to `legacy/ansible`; the Go binary is now the primary workflow.
 - Offline bundle helper now packages `storctl-compose` instead of a standalone target-side `storctl` binary.
+- Public `compose.yaml` no longer exposes `nic_type`; `storctl-compose` is fixed to 1823 orchestration.

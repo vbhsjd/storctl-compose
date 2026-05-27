@@ -30,7 +30,7 @@ func TestLoadInputsParsesPasswordAndKey(t *testing.T) {
     user: root
     key_file: /tmp/key
 `)
-	cfgPath := write("compose.yaml", "profile: c4\nprofile_file: "+profile+"\nartifact_src: "+drivers+"\nnic_type: \"1823\"\n")
+	cfgPath := write("compose.yaml", "profile: c4\nprofile_file: "+profile+"\nartifact_src: "+drivers+"\n")
 	gotHosts, cfg, err := LoadInputs(hosts, cfgPath)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestLoadInputsParsesPasswordAndKey(t *testing.T) {
 	}
 }
 
-func TestLoadInputsRejectsUnsupportedNICType(t *testing.T) {
+func TestLoadInputsIgnoresLegacyNICType(t *testing.T) {
 	dir := t.TempDir()
 	profile := filepath.Join(dir, "profiles.json")
 	drivers := filepath.Join(dir, "drivers")
@@ -53,8 +53,8 @@ func TestLoadInputsRejectsUnsupportedNICType(t *testing.T) {
 	cfg := filepath.Join(dir, "compose.yaml")
 	_ = os.WriteFile(hosts, []byte("hosts:\n  - name: node\n    ip: 1.1.1.1\n    user: root\n    password: x\n"), 0644)
 	_ = os.WriteFile(cfg, []byte("profile: c4\nprofile_file: "+profile+"\nartifact_src: "+drivers+"\nnic_type: cx7\n"), 0644)
-	if _, _, err := LoadInputs(hosts, cfg); err == nil {
-		t.Fatal("expected unsupported nic_type error")
+	if _, _, err := LoadInputs(hosts, cfg); err != nil {
+		t.Fatalf("legacy nic_type should be ignored: %v", err)
 	}
 }
 

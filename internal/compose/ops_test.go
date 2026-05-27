@@ -128,6 +128,21 @@ func TestApplyReportsNoCandidate(t *testing.T) {
 	}
 }
 
+func TestInstallDriverUsesFixed1823NICType(t *testing.T) {
+	dir := t.TempDir()
+	r := &fakeRemote{outputs: map[string]CommandResult{
+		"'/usr/local/bin/storctl' install-driver --nic-type 1823 --artifact-dir '/root/storage_pkgs'": {Stdout: "OK driver\n"},
+	}, errs: map[string]error{}}
+	app := &App{Dialer: fakeDialer{remotes: map[string]*fakeRemote{"node": r}}, Out: os.Stdout}
+	results := app.InstallDriver(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}}}, testConfig(dir), Options{ReportDir: dir, Concurrency: 1})
+	if len(results) != 1 || results[0].Status != "OK" {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+	if len(r.runs) != 1 || !strings.Contains(r.runs[0], "--nic-type 1823") {
+		t.Fatalf("install-driver command did not pin 1823: %+v", r.runs)
+	}
+}
+
 func TestCopyUploadsStorctlProfileAndArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(dir)
@@ -174,7 +189,6 @@ func testConfig(reportDir string) Config {
 		AllowTCPFallback: true,
 		QoS:              "off",
 		ReportDir:        reportDir,
-		NICType:          "1823",
 	}
 }
 

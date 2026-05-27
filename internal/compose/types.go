@@ -31,7 +31,6 @@ type Config struct {
 	AllowTCPFallback bool   `yaml:"allow_tcp_fallback"`
 	QoS              string `yaml:"qos"`
 	ReportDir        string `yaml:"report_dir"`
-	NICType          string `yaml:"nic_type"`
 }
 
 type Options struct {

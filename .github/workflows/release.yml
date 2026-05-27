@@ -37,6 +37,7 @@ jobs:
           GOOS=linux GOARCH=arm64 go build \
             -ldflags "-X main.version=${GITHUB_REF_NAME} -X main.commit=${storctl_commit} -X main.builtAt=${built_at}" \
             -o dist/storctl-linux-arm64 ./cmd/storctl
+          sha256sum dist/storctl-linux-arm64 > dist/storctl-linux-arm64.sha256
           cp dist/storctl-linux-arm64 ../storctl-compose/internal/assets/storctl-linux-arm64
 
       - name: Build storctl-compose
@@ -57,8 +58,14 @@ jobs:
           for arch in arm64 amd64; do
             pkg="storctl-compose-${GITHUB_REF_NAME}-linux-${arch}"
             mkdir -p "dist/${pkg}"
-            cp "dist/storctl-compose-linux-${arch}" "dist/${pkg}/"
-            cp "dist/storctl-compose-linux-${arch}.sha256" "dist/${pkg}/"
+            cp "dist/storctl-compose-linux-${arch}" "dist/${pkg}/storctl-compose"
+            (cd "dist/${pkg}" && sha256sum storctl-compose > storctl-compose.sha256)
+            cp "../storctl/dist/storctl-linux-arm64" "dist/${pkg}/storctl-linux-arm64"
+            (cd "dist/${pkg}" && sha256sum storctl-linux-arm64 > storctl-linux-arm64.sha256)
+            cp examples/hosts.yaml "dist/${pkg}/hosts.yaml.example"
+            cp examples/compose.yaml "dist/${pkg}/compose.yaml"
+            cp examples/storctl-profiles.json "dist/${pkg}/storctl-profiles.json"
+            cp examples/storctl-artifacts.example.json "dist/${pkg}/storctl-artifacts.example.json"
             cp README.md README.en.md CHANGELOG.md LICENSE "dist/${pkg}/"
             cp -R examples "dist/${pkg}/examples"
             cp -R docs "dist/${pkg}/docs"

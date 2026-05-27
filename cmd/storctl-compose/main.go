@@ -103,15 +103,16 @@ func usage() {
 	fmt.Println(`storctl-compose - batch 1823 storage onboarding
 
 usage:
-  storctl-compose copy --hosts hosts.yaml --config compose.yaml [--concurrency 30]
-  storctl-compose install-driver --hosts hosts.yaml --config compose.yaml [--upgrade-firmware]
-  storctl-compose apply --hosts hosts.yaml --config compose.yaml
-  storctl-compose check --hosts hosts.yaml --config compose.yaml
-  storctl-compose report --report-dir reports
+  storctl-compose copy
+  storctl-compose install-driver [--upgrade-firmware]
+  storctl-compose apply
+  storctl-compose check
+  storctl-compose report
   storctl-compose version [--json]
 
 notes:
-  - only 1823 is supported in storctl-compose v1
+  - defaults: --hosts hosts.yaml --config compose.yaml --report-dir reports
+  - only 1823 is supported in storctl-compose
   - target hosts must allow root SSH login
   - drivers stay in the external artifact_src directory`)
 }

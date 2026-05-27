@@ -55,9 +55,6 @@ func applyConfigDefaults(cfg *Config) {
 	if cfg.ReportDir == "" {
 		cfg.ReportDir = "reports"
 	}
-	if cfg.NICType == "" {
-		cfg.NICType = "1823"
-	}
 }
 
 func validateHosts(hosts HostsFile) error {
@@ -99,9 +96,6 @@ func validateConfig(cfg Config) error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("compose.yaml missing %s", strings.Join(missing, ", "))
-	}
-	if cfg.NICType != "1823" {
-		return fmt.Errorf("storctl-compose only supports nic_type 1823")
 	}
 	if cfg.QoS != "off" && cfg.QoS != "apply" {
 		return fmt.Errorf("qos must be off or apply")

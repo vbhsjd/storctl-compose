@@ -1,60 +1,85 @@
 # storctl-compose
 
-`storctl-compose` is the batch companion for `storctl`: a single Go binary that connects to hosts over SSH/SFTP, copies `storctl`, profiles, and offline driver artifacts, then auto-tries 1823 NICs until storage is mounted.
+`storctl-compose` is the beginner-friendly 1823 batch onboarding tool for `storctl`. It is shipped as a GitHub Release zip: unzip it, fill in the YAML/JSON templates, put offline driver packages under `drivers/`, then run the bundled binary.
 
 No Ansible, sshpass, Python, or hand-written storage NIC names are required.
 
 ## Fast Start
 
-Prepare:
-
-- `hosts.yaml`: host IP, root user, password or key.
-- `compose.yaml`: profile, local driver directory, remote paths.
-- `drivers/`: offline 1823 driver packages and `storctl-artifacts.json`.
-
 ```bash
-cp examples/hosts.yaml hosts.yaml
-cp examples/compose.yaml compose.yaml
-cp examples/storctl-profiles.json storctl-profiles.json
+unzip storctl-compose-*.zip
+cd storctl-compose-*
+cp hosts.yaml.example hosts.yaml
 mkdir -p drivers reports
 ```
 
-Run:
+Edit:
+
+- `hosts.yaml`: target host IP, root user, password or key.
+- `compose.yaml`: profile name, local driver directory, remote paths.
+- `storctl-profiles.json`: VLAN, gateway, IP derivation, and mounts.
+
+Put offline 1823 driver packages and `storctl-artifacts.json` under `drivers/`, then run one host first:
 
 ```bash
-storctl-compose copy --hosts hosts.yaml --config compose.yaml
-storctl-compose install-driver --hosts hosts.yaml --config compose.yaml
-storctl-compose apply --hosts hosts.yaml --config compose.yaml
-storctl-compose check --hosts hosts.yaml --config compose.yaml
-storctl-compose report --report-dir reports
+./storctl-compose copy --limit node-57-122
+./storctl-compose install-driver --limit node-57-122
+./storctl-compose apply --limit node-57-122
+./storctl-compose check --limit node-57-122
+./storctl-compose report
 ```
 
-## Commands
+Then run all hosts:
 
 ```bash
-storctl-compose copy             # upload storctl, profile, drivers
-storctl-compose install-driver   # install 1823 driver explicitly; no auto reboot
-storctl-compose apply            # auto-select 1823 NIC and mount storage
-storctl-compose check            # collect storctl check --json
-storctl-compose report           # summarize reports/
-storctl-compose version --json
+./storctl-compose copy
+./storctl-compose install-driver
+./storctl-compose apply
+./storctl-compose check
+./storctl-compose report
+```
+
+## Defaults
+
+```text
+--hosts hosts.yaml
+--config compose.yaml
+--report-dir reports
+--concurrency 30
 ```
 
 Useful flags:
 
 ```bash
---concurrency 30
---limit node-a,node-b
---upgrade-firmware
+./storctl-compose apply --limit node-a,node-b
+./storctl-compose apply --concurrency 50
+./storctl-compose install-driver --upgrade-firmware
+./storctl-compose version --json
 ```
+
+## Release Package
+
+Release zips contain:
+
+```text
+storctl-compose
+storctl-linux-arm64
+hosts.yaml.example
+compose.yaml
+storctl-profiles.json
+storctl-artifacts.example.json
+README.md
+docs/
+examples/
+```
+
+`storctl-compose` embeds `storctl-linux-arm64`, but the standalone `storctl-linux-arm64` is included for single-host debugging.
 
 ## Notes
 
-- Only 1823 orchestration is supported; use `storctl` directly for CX7.
+- `storctl-compose` always orchestrates 1823.
+- Use standalone `storctl-linux-arm64` for CX7.
 - Targets must allow root SSH login.
 - `apply` never installs drivers; run `install-driver` first.
-- TCP fallback is enabled by default and reported as degraded.
-- Real driver packages are not stored in the public repo or public releases.
-- Release binaries embed `storctl-linux-arm64`; source builds may set `storctl_bin` in `compose.yaml`.
-
-See [docs/tutorial.md](docs/tutorial.md) for details.
+- The tool never reboots hosts automatically.
+- Real driver packages are not stored in public releases.
