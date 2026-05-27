@@ -31,3 +31,5 @@
   such as `eth3`, matching field behavior on some 1823 hosts.
 - Release bundle now embeds `storctl` with stale VLAN parent repair and VLAN
   MTU rebuild handling.
+- Release bundle now embeds `storctl` with NFSv3 TCP fallback defaults for lab
+  storage servers that reject NFSv4.1 TCP.
