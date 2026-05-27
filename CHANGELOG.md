@@ -21,6 +21,8 @@
   instead of being reconfigured.
 - Per-host `--timeout` for copy, install-driver, apply, and check. SFTP uploads
   now close the SSH/SFTP connection when the timeout is hit.
+- `storctl-compose report --csv result.csv` for exporting every host result,
+  including successful hosts.
 
 ### Changed
 
@@ -38,3 +40,4 @@
 - `storctl-compose report` now defaults to a compact human summary; detailed
   counters moved behind `--verbose`, and full machine output is available with
   `--json`.
+- Compact report output now includes a success list as well as failures.

@@ -60,9 +60,12 @@ Useful flags:
 ./storctl-compose copy --timeout 60m
 ./storctl-compose report --json
 ./storctl-compose report --verbose
+./storctl-compose report --csv result.csv
 ./storctl-compose install-driver --upgrade-firmware
 ./storctl-compose version --json
 ```
+
+`--csv result.csv` writes every host, including successful hosts, for spreadsheets or sharing.
 
 ## Release Package
 

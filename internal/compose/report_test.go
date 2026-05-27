@@ -25,6 +25,9 @@ func TestPrintReportDefaultIsCompact(t *testing.T) {
 	if !strings.Contains(got, "failures:\nnode-b\tapply\tno_link_ready_nic\tno 1823 NIC has ready optical/module/link state") {
 		t.Fatalf("failure list missing:\n%s", got)
 	}
+	if !strings.Contains(got, "successes:\nnode-a\tapply\tdegraded\t") {
+		t.Fatalf("success list missing:\n%s", got)
+	}
 }
 
 func TestPrintReportJSONIncludesFullSummary(t *testing.T) {
@@ -51,6 +54,24 @@ func TestPrintReportVerboseKeepsDetailedColumns(t *testing.T) {
 	got := out.String()
 	if !strings.Contains(got, "optical_absent") || !strings.Contains(got, "all_candidate_nics_failed") {
 		t.Fatalf("verbose columns missing:\n%s", got)
+	}
+}
+
+func TestWriteReportCSVIncludesAllHosts(t *testing.T) {
+	dir := writeReportFixtures(t)
+	var out bytes.Buffer
+	if err := WriteReportCSV(dir, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "host,ip,command,status,code,message,selected_nic,degraded,reboot_required,candidate_count") {
+		t.Fatalf("csv header missing:\n%s", got)
+	}
+	if !strings.Contains(got, "node-a,,apply,OK,degraded,") {
+		t.Fatalf("success row missing:\n%s", got)
+	}
+	if !strings.Contains(got, "node-b,,apply,FAIL,no_link_ready_nic,no 1823 NIC has ready optical/module/link state") {
+		t.Fatalf("failure row missing:\n%s", got)
 	}
 }
 

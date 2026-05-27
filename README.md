@@ -307,7 +307,10 @@ hosts success fail degraded driver_not_ready no_candidate no_link_ready reboot_r
 ```bash
 ./storctl-compose report --json
 ./storctl-compose report --verbose
+./storctl-compose report --csv result.csv
 ```
+
+`--csv result.csv` 会输出所有机器，不只失败机器，适合用 Excel 打开或发给别人看。
 
 失败尝试日志在：
 

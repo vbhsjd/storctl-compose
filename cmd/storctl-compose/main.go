@@ -34,8 +34,16 @@ func run(args []string) int {
 		reportDir := fs.String("report-dir", "reports", "report directory")
 		jsonOut := fs.Bool("json", false, "print full JSON summary")
 		verbose := fs.Bool("verbose", false, "print detailed human summary")
+		csvPath := fs.String("csv", "", "write all host results to CSV file; use - for stdout")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
+		}
+		if *csvPath != "" {
+			if err := writeCSVReport(*reportDir, *csvPath); err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
+				return 1
+			}
+			return 0
 		}
 		if err := compose.PrintReport(*reportDir, os.Stdout, compose.ReportOptions{JSON: *jsonOut, Verbose: *verbose}); err != nil {
 			fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
@@ -49,6 +57,22 @@ func run(args []string) int {
 		usage()
 		return 2
 	}
+}
+
+func writeCSVReport(reportDir, csvPath string) error {
+	if csvPath == "-" {
+		return compose.WriteReportCSV(reportDir, os.Stdout)
+	}
+	f, err := os.Create(csvPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := compose.WriteReportCSV(reportDir, f); err != nil {
+		return err
+	}
+	fmt.Printf("OK report csv %s\n", csvPath)
+	return nil
 }
 
 func runWorkflow(command string, args []string) int {
@@ -128,7 +152,7 @@ usage:
   storctl-compose install-driver [--upgrade-firmware]
   storctl-compose apply
   storctl-compose check
-  storctl-compose report [--json|--verbose]
+  storctl-compose report [--json|--verbose|--csv result.csv]
   storctl-compose version [--json]
 
 notes:

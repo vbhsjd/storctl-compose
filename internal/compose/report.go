@@ -1,11 +1,14 @@
 package compose
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -126,6 +129,8 @@ func LoadReport(reportDir string) (ReportData, error) {
 	if err != nil {
 		return report, err
 	}
+	sort.Slice(report.Results, func(i, j int) bool { return report.Results[i].Host < report.Results[j].Host })
+	sort.Slice(report.Failures, func(i, j int) bool { return report.Failures[i].Host < report.Failures[j].Host })
 	report.Summary = summary
 	return report, nil
 }
@@ -137,13 +142,26 @@ func printDefaultReport(out io.Writer, report ReportData) {
 		summary.Hosts, summary.Success, summary.Failures, summary.DegradedTCP,
 		summary.DriverNotReady, summary.NoCandidateNIC, summary.NoLinkReadyNIC,
 		summary.RebootRequired)
-	if len(report.Failures) == 0 {
-		return
+	if len(report.Failures) > 0 {
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "failures:")
+		for _, failure := range report.Failures {
+			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", failure.Host, failure.Command, failure.Code, failure.Message)
+		}
 	}
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "failures:")
-	for _, failure := range report.Failures {
-		fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", failure.Host, failure.Command, failure.Code, failure.Message)
+	if summary.Success > 0 {
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "successes:")
+		for _, result := range report.Results {
+			if result.Status != "OK" {
+				continue
+			}
+			code := "ok"
+			if result.Degraded {
+				code = "degraded"
+			}
+			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", result.Host, result.Command, code, successMessage(result))
+		}
 	}
 }
 
@@ -164,6 +182,63 @@ func trimReportMessage(message string) string {
 		return message[:177] + "..."
 	}
 	return message
+}
+
+func successMessage(result HostResult) string {
+	if result.SelectedNIC != "" {
+		return "selected-nic " + result.SelectedNIC
+	}
+	return trimReportMessage(result.Message)
+}
+
+func WriteReportCSV(reportDir string, out io.Writer) error {
+	report, err := LoadReport(reportDir)
+	if err != nil {
+		return err
+	}
+	w := csv.NewWriter(out)
+	if err := w.Write([]string{
+		"host",
+		"ip",
+		"command",
+		"status",
+		"code",
+		"message",
+		"selected_nic",
+		"degraded",
+		"reboot_required",
+		"candidate_count",
+	}); err != nil {
+		return err
+	}
+	for _, result := range report.Results {
+		code := result.Code
+		message := trimReportMessage(result.Message)
+		if result.Status == "OK" {
+			if result.Degraded {
+				code = "degraded"
+			} else if code == "" {
+				code = "ok"
+			}
+			message = successMessage(result)
+		}
+		if err := w.Write([]string{
+			result.Host,
+			result.IP,
+			result.Command,
+			result.Status,
+			code,
+			message,
+			result.SelectedNIC,
+			strconv.FormatBool(result.Degraded),
+			strconv.FormatBool(result.RebootRequired),
+			strconv.Itoa(len(result.Candidates)),
+		}); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
 }
 
 func HasFailures(results []HostResult) bool {
