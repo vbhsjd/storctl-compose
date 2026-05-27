@@ -68,7 +68,9 @@ cp -R "$drivers"/. "$bundle_dir/drivers/"
 [[ -n "$storctl_bin" ]] && cp "$storctl_bin" "$bundle_dir/storctl-linux-arm64"
 [[ -n "$matrix" ]] && cp "$matrix" "$bundle_dir/driver-matrix.yaml"
 [[ -n "$config" ]] && cp "$config" "$bundle_dir/compose.yaml"
-[[ -n "$hosts" ]] && cp "$hosts" "$bundle_dir/hosts.yaml"
+if [[ -n "$hosts" ]]; then
+  cp "$hosts" "$bundle_dir/$(basename "$hosts")"
+fi
 
 if [[ -f "$drivers/storctl-artifacts.json" ]]; then
   cp "$drivers/storctl-artifacts.json" "$bundle_dir/storctl-artifacts.json"

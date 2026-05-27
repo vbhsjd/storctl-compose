@@ -1,8 +1,10 @@
 package compose
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,14 +66,45 @@ func TestWriteReportCSVIncludesAllHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "host,ip,command,status,code,message,selected_nic,degraded,reboot_required,candidate_count") {
+	if !strings.Contains(got, "ip,command,status,code,message,protocol") {
 		t.Fatalf("csv header missing:\n%s", got)
 	}
-	if !strings.Contains(got, "node-a,,apply,OK,degraded,") {
+	if !strings.Contains(got, ",apply,OK,ok,,tcp") {
 		t.Fatalf("success row missing:\n%s", got)
 	}
-	if !strings.Contains(got, "node-b,,apply,FAIL,no_link_ready_nic,no 1823 NIC has ready optical/module/link state") {
+	if !strings.Contains(got, ",apply,FAIL,no_link_ready_nic,no 1823 NIC has ready optical/module/link state,rdma") {
 		t.Fatalf("failure row missing:\n%s", got)
+	}
+}
+
+func TestWriteReportXLSXHasFilterWidthsAndProtocolDropdown(t *testing.T) {
+	dir := writeReportFixtures(t)
+	var out bytes.Buffer
+	if err := WriteReportXLSX(dir, &out); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(out.Bytes()), int64(out.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := ""
+	for _, f := range zr.File {
+		if f.Name != "xl/worksheets/sheet1.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data = string(body)
+	}
+	if !strings.Contains(data, "autoFilter") || !strings.Contains(data, "dataValidations") || !strings.Contains(data, "rdma,tcp") {
+		t.Fatalf("xlsx missing filter or dropdown")
 	}
 }
 

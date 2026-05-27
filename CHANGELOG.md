@@ -23,6 +23,10 @@
   now close the SSH/SFTP connection when the timeout is hit.
 - `storctl-compose report --csv result.csv` for exporting every host result,
   including successful hosts.
+- `storctl-compose report --xlsx result.xlsx` for Excel-friendly reports with
+  a filter row, wider columns, and `protocol` values of `rdma` or `tcp`.
+- `hosts.csv` as the default host input format: `ip,password,user`, with
+  `user` defaulting to `root`.
 
 ### Changed
 
@@ -41,3 +45,5 @@
   counters moved behind `--verbose`, and full machine output is available with
   `--json`.
 - Compact report output now includes a success list as well as failures.
+- Report CSV output is now intentionally small: `ip,command,status,code,message,protocol`.
+- Non-root SSH users are allowed when the target has passwordless sudo.

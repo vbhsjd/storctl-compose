@@ -8,6 +8,8 @@ reports/
 tmp/
 tests/sim/.work/
 hosts.yaml
+hosts.csv
+!examples/hosts.csv
 compose.yaml
 /storctl-compose
 /dist/

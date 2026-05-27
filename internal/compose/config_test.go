@@ -43,6 +43,28 @@ func TestLoadInputsParsesPasswordAndKey(t *testing.T) {
 	}
 }
 
+func TestLoadInputsParsesHostsCSV(t *testing.T) {
+	dir := t.TempDir()
+	profile := filepath.Join(dir, "profiles.json")
+	drivers := filepath.Join(dir, "drivers")
+	_ = os.WriteFile(profile, []byte("{}"), 0644)
+	_ = os.Mkdir(drivers, 0755)
+	hosts := filepath.Join(dir, "hosts.csv")
+	cfg := filepath.Join(dir, "compose.yaml")
+	_ = os.WriteFile(hosts, []byte("ip,password,user\n80.5.21.122,secret,\n80.5.21.123,secret2,admin\n"), 0644)
+	_ = os.WriteFile(cfg, []byte("profile: c4\nprofile_file: "+profile+"\nartifact_src: "+drivers+"\n"), 0644)
+	gotHosts, _, err := LoadInputs(hosts, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotHosts.Hosts[0].Name != "80.5.21.122" || gotHosts.Hosts[0].User != "root" {
+		t.Fatalf("default user/name not applied: %+v", gotHosts.Hosts[0])
+	}
+	if gotHosts.Hosts[1].User != "admin" {
+		t.Fatalf("user override not applied: %+v", gotHosts.Hosts[1])
+	}
+}
+
 func TestLoadInputsIgnoresLegacyNICType(t *testing.T) {
 	dir := t.TempDir()
 	profile := filepath.Join(dir, "profiles.json")

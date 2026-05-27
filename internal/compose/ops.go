@@ -39,6 +39,12 @@ func (a *App) Copy(ctx context.Context, hosts HostsFile, cfg Config, opts Option
 	}
 	return a.runHosts(ctx, selected, cfg, opts, "copy", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "copy")
+		if host.User != "root" {
+			if err := copyWithSudo(ctx, host, remote, cfg, storctlBytes); err != nil {
+				return finishFail(result, "copy_sudo_failed", err.Error())
+			}
+			return finishOK(result, "copied")
+		}
 		if err := remote.UploadBytes(ctx, cfg.RemoteBin, storctlBytes, 0755); err != nil {
 			return finishFail(result, "copy_storctl_failed", err.Error())
 		}
@@ -55,7 +61,7 @@ func (a *App) Copy(ctx context.Context, hosts HostsFile, cfg Config, opts Option
 func (a *App) InstallDriver(ctx context.Context, hosts HostsFile, cfg Config, opts Options) []HostResult {
 	return a.runHosts(ctx, hosts.Hosts, cfg, opts, "install-driver", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "install-driver")
-		cmd := fmt.Sprintf("%s install-driver --nic-type 1823 --artifact-dir %s", shellQuote(cfg.RemoteBin), shellQuote(cfg.RemoteArtifact))
+		cmd := fmt.Sprintf("%s install-driver --nic-type 1823 --artifact-dir %s", remoteStorctl(host, cfg), shellQuote(cfg.RemoteArtifact))
 		if opts.UpgradeFirmware {
 			cmd += " --upgrade-firmware"
 		}
@@ -74,12 +80,12 @@ func (a *App) InstallDriver(ctx context.Context, hosts HostsFile, cfg Config, op
 func (a *App) Apply(ctx context.Context, hosts HostsFile, cfg Config, opts Options) []HostResult {
 	return a.runHosts(ctx, hosts.Hosts, cfg, opts, "apply", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "apply")
-		if ok, degraded, msg := precheckMounted(ctx, remote, cfg, opts.ReportDir, host.Name); ok {
+		if ok, degraded, msg := precheckMounted(ctx, remote, cfg, opts.ReportDir, host); ok {
 			result.Degraded = degraded
 			return finishOK(result, msg)
 		}
 		probeDir := filepath.Join(opts.ReportDir, host.Name, "nic-probe")
-		candidates, err := discoverCandidates(ctx, remote, host.IP, probeDir)
+		candidates, err := discoverCandidates(ctx, remote, host, probeDir)
 		result.Candidates = candidates
 		if err != nil {
 			return finishFail(result, "discover_failed", err.Error())
@@ -116,7 +122,7 @@ func (a *App) Apply(ctx context.Context, hosts HostsFile, cfg Config, opts Optio
 func (a *App) Check(ctx context.Context, hosts HostsFile, cfg Config, opts Options) []HostResult {
 	return a.runHosts(ctx, hosts.Hosts, cfg, opts, "check", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "check")
-		out, err := remote.Run(ctx, shellQuote(cfg.RemoteBin)+" check --json")
+		out, err := remote.Run(ctx, remoteStorctl(host, cfg)+" check --json")
 		if err := os.MkdirAll(opts.ReportDir, 0755); err != nil {
 			return finishFail(result, "report_dir_failed", err.Error())
 		}
@@ -244,9 +250,49 @@ func uploadDir(ctx context.Context, remote Remote, localDir, remoteDir string) e
 	})
 }
 
+func copyWithSudo(ctx context.Context, host Host, remote Remote, cfg Config, storctlBytes []byte) error {
+	tmpBase := "/tmp/storctl-compose-" + safePathName(host.Name)
+	tmpBin := path.Join(tmpBase, "storctl")
+	tmpProfile := path.Join(tmpBase, "profiles.json")
+	tmpArtifact := path.Join(tmpBase, "storage_pkgs")
+	if err := remote.MkdirAll(ctx, tmpBase, 0755); err != nil {
+		return err
+	}
+	if err := remote.UploadBytes(ctx, tmpBin, storctlBytes, 0755); err != nil {
+		return err
+	}
+	if err := remote.UploadFile(ctx, cfg.ProfileFile, tmpProfile, 0644); err != nil {
+		return err
+	}
+	if err := uploadDir(ctx, remote, cfg.ArtifactSrc, tmpArtifact); err != nil {
+		return err
+	}
+	commands := []string{
+		"install -D -m 0755 " + shellQuote(tmpBin) + " " + shellQuote(cfg.RemoteBin),
+		"install -D -m 0644 " + shellQuote(tmpProfile) + " " + shellQuote(cfg.RemoteProfile),
+		"mkdir -p " + shellQuote(cfg.RemoteArtifact),
+		"cp -a " + shellQuote(tmpArtifact+"/.") + " " + shellQuote(cfg.RemoteArtifact+"/"),
+	}
+	for _, command := range commands {
+		if out, err := remote.Run(ctx, sudoShell(host, command)); err != nil {
+			return fmt.Errorf("%s: %w: %s", command, err, trimMessage(out.Stdout+out.Stderr))
+		}
+	}
+	return nil
+}
+
+func safePathName(name string) string {
+	replacer := regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
+	out := replacer.ReplaceAllString(name, "_")
+	if out == "" {
+		return "host"
+	}
+	return out
+}
+
 func applyCommand(cfg Config, host Host, nic string) string {
 	parts := []string{
-		shellQuote(cfg.RemoteBin), "apply",
+		remoteStorctl(host, cfg), "apply",
 		"--profile-file", shellQuote(cfg.RemoteProfile),
 		"--profile", shellQuote(cfg.Profile),
 		"--nic", shellQuote(nic),
@@ -258,6 +304,21 @@ func applyCommand(cfg Config, host Host, nic string) string {
 		parts = append(parts, "--allow-tcp-fallback")
 	}
 	return strings.Join(parts, " ")
+}
+
+func remoteStorctl(host Host, cfg Config) string {
+	cmd := shellQuote(cfg.RemoteBin)
+	if host.User == "root" {
+		return cmd
+	}
+	return "sudo -n " + cmd
+}
+
+func sudoShell(host Host, command string) string {
+	if host.User == "root" {
+		return command
+	}
+	return "sudo -n sh -c " + shellQuote(command)
 }
 
 type storctlCheckReport struct {
@@ -275,8 +336,9 @@ type storctlCheckReport struct {
 	} `json:"checks"`
 }
 
-func precheckMounted(ctx context.Context, remote Remote, cfg Config, reportDir, hostName string) (bool, bool, string) {
-	out, err := remote.Run(ctx, shellQuote(cfg.RemoteBin)+" check --json")
+func precheckMounted(ctx context.Context, remote Remote, cfg Config, reportDir string, host Host) (bool, bool, string) {
+	out, err := remote.Run(ctx, remoteStorctl(host, cfg)+" check --json")
+	hostName := host.Name
 	if reportDir != "" && hostName != "" {
 		dir := filepath.Join(reportDir, hostName)
 		_ = os.MkdirAll(dir, 0755)
@@ -334,12 +396,13 @@ func checkReportAlreadyMounted(report storctlCheckReport, allowTCPFallback bool)
 	return true, false, "already mounted"
 }
 
-func discoverCandidates(ctx context.Context, remote Remote, mgmtIP, probeDir string) ([]CandidateNIC, error) {
+func discoverCandidates(ctx context.Context, remote Remote, host Host, probeDir string) ([]CandidateNIC, error) {
+	mgmtIP := host.IP
 	out, err := remote.Run(ctx, "ls -1 /sys/class/net")
 	if err != nil {
 		return nil, err
 	}
-	hinicMap := parseHinicInfo(remoteStdout(ctx, remote, "hinicadm3 info 2>/dev/null || true"))
+	hinicMap := parseHinicInfo(remoteStdout(ctx, remote, sudoShell(host, "hinicadm3 info 2>/dev/null || true")))
 	var candidates []CandidateNIC
 	for _, nic := range strings.Fields(out.Stdout) {
 		if ignoredInterface(nic) {
@@ -355,7 +418,7 @@ func discoverCandidates(ctx context.Context, remote Remote, mgmtIP, probeDir str
 		if !strings.HasPrefix(driver, "hinic3") && !strings.HasPrefix(driver, "hinic") {
 			continue
 		}
-		_, _ = remote.Run(ctx, "ip link set dev "+shellQuote(nic)+" up && sleep 2")
+		_, _ = remote.Run(ctx, sudoShell(host, "ip link set dev "+shellQuote(nic)+" up && sleep 2"))
 		speed, _ := strconv.Atoi(strings.TrimSpace(remoteStdout(ctx, remote, "cat /sys/class/net/"+shellQuote(nic)+"/speed 2>/dev/null || true")))
 		carrier := strings.TrimSpace(remoteStdout(ctx, remote, "cat /sys/class/net/"+shellQuote(nic)+"/carrier 2>/dev/null || true")) == "1"
 		up := strings.TrimSpace(remoteStdout(ctx, remote, "cat /sys/class/net/"+shellQuote(nic)+"/operstate 2>/dev/null || true")) == "up"
@@ -377,7 +440,7 @@ func discoverCandidates(ctx context.Context, remote Remote, mgmtIP, probeDir str
 		if port, ok := hinicMap[nic]; ok {
 			candidate.HinicDevice = port.Device
 			candidate.PortID = port.PortID
-			candidate = probeHilink(ctx, remote, probeDir, candidate)
+			candidate = probeHilink(ctx, remote, host, probeDir, candidate)
 		} else {
 			candidate.ProbeStatus = "unknown"
 			candidate.ProbeMessage = "hinicadm3 info did not map this Linux NIC; falling back to legacy candidate selection"
@@ -422,7 +485,7 @@ func parseHinicInfo(info string) map[string]hinicPort {
 	return out
 }
 
-func probeHilink(ctx context.Context, remote Remote, probeDir string, candidate CandidateNIC) CandidateNIC {
+func probeHilink(ctx context.Context, remote Remote, host Host, probeDir string, candidate CandidateNIC) CandidateNIC {
 	attempts := []string{candidate.HinicDevice}
 	if candidate.Name != "" && candidate.Name != candidate.HinicDevice {
 		attempts = append(attempts, candidate.Name)
@@ -431,7 +494,7 @@ func probeHilink(ctx context.Context, remote Remote, probeDir string, candidate 
 	var simpleErr, fullErr error
 	for _, device := range attempts {
 		candidate.ProbeDevice = device
-		simple, full, count, simpleErr, fullErr = runHilinkProbe(ctx, remote, device, candidate.PortID)
+		simple, full, count, simpleErr, fullErr = runHilinkProbe(ctx, remote, host, device, candidate.PortID)
 		if simpleErr != nil || fullErr != nil {
 			continue
 		}
@@ -460,11 +523,11 @@ func probeHilink(ctx context.Context, remote Remote, probeDir string, candidate 
 	return candidate
 }
 
-func runHilinkProbe(ctx context.Context, remote Remote, device string, portID int) (CommandResult, CommandResult, CommandResult, error, error) {
+func runHilinkProbe(ctx context.Context, remote Remote, host Host, device string, portID int) (CommandResult, CommandResult, CommandResult, error, error) {
 	base := "hinicadm3 hilink_port -i " + shellQuote(device) + " -p " + strconv.Itoa(portID)
-	simple, simpleErr := remote.Run(ctx, base+" -s")
-	full, fullErr := remote.Run(ctx, base)
-	count, _ := remote.Run(ctx, "hinicadm3 hilink_count -i "+shellQuote(device)+" -p "+strconv.Itoa(portID))
+	simple, simpleErr := remote.Run(ctx, sudoShell(host, base+" -s"))
+	full, fullErr := remote.Run(ctx, sudoShell(host, base))
+	count, _ := remote.Run(ctx, sudoShell(host, "hinicadm3 hilink_count -i "+shellQuote(device)+" -p "+strconv.Itoa(portID)))
 	return simple, full, count, simpleErr, fullErr
 }
 

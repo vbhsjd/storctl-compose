@@ -35,8 +35,16 @@ func run(args []string) int {
 		jsonOut := fs.Bool("json", false, "print full JSON summary")
 		verbose := fs.Bool("verbose", false, "print detailed human summary")
 		csvPath := fs.String("csv", "", "write all host results to CSV file; use - for stdout")
+		xlsxPath := fs.String("xlsx", "", "write formatted Excel report")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
+		}
+		if *xlsxPath != "" {
+			if err := writeXLSXReport(*reportDir, *xlsxPath); err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
+				return 1
+			}
+			return 0
 		}
 		if *csvPath != "" {
 			if err := writeCSVReport(*reportDir, *csvPath); err != nil {
@@ -59,6 +67,19 @@ func run(args []string) int {
 	}
 }
 
+func writeXLSXReport(reportDir, xlsxPath string) error {
+	f, err := os.Create(xlsxPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := compose.WriteReportXLSX(reportDir, f); err != nil {
+		return err
+	}
+	fmt.Printf("OK report xlsx %s\n", xlsxPath)
+	return nil
+}
+
 func writeCSVReport(reportDir, csvPath string) error {
 	if csvPath == "-" {
 		return compose.WriteReportCSV(reportDir, os.Stdout)
@@ -78,7 +99,7 @@ func writeCSVReport(reportDir, csvPath string) error {
 func runWorkflow(command string, args []string) int {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	var opts compose.Options
-	fs.StringVar(&opts.HostsPath, "hosts", "hosts.yaml", "hosts YAML")
+	fs.StringVar(&opts.HostsPath, "hosts", "hosts.csv", "hosts CSV or YAML")
 	fs.StringVar(&opts.ConfigPath, "config", "compose.yaml", "compose YAML")
 	fs.StringVar(&opts.Limit, "limit", "", "comma-separated host names or IPs")
 	fs.IntVar(&opts.Concurrency, "concurrency", compose.DefaultConcurrency, "parallel hosts, max 50")
@@ -152,13 +173,13 @@ usage:
   storctl-compose install-driver [--upgrade-firmware]
   storctl-compose apply
   storctl-compose check
-  storctl-compose report [--json|--verbose|--csv result.csv]
+  storctl-compose report [--json|--verbose|--csv result.csv|--xlsx result.xlsx]
   storctl-compose version [--json]
 
 notes:
-  - defaults: --hosts hosts.yaml --config compose.yaml --report-dir reports
+  - defaults: --hosts hosts.csv --config compose.yaml --report-dir reports
   - copy/install-driver/apply/check default to --timeout 30m per host
   - only 1823 is supported in storctl-compose
-  - target hosts must allow root SSH login
+  - non-root SSH users require passwordless sudo
   - drivers stay in the external artifact_src directory`)
 }

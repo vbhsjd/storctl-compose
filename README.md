@@ -24,6 +24,7 @@ storctl-compose.sha256
 storctl-linux-arm64
 storctl-linux-arm64.sha256
 hosts.yaml.example
+hosts.csv.example
 compose.yaml.example
 storctl-profiles.example.json
 compose.yaml
@@ -43,7 +44,7 @@ examples/
 unzip storctl-compose-*.zip
 cd storctl-compose-*
 mkdir -p drivers reports
-cp hosts.yaml.example hosts.yaml
+cp hosts.csv.example hosts.csv
 cp compose.yaml.example compose.yaml
 cp storctl-profiles.example.json storctl-profiles.json
 cp storctl-artifacts.example.json drivers/storctl-artifacts.json
@@ -52,7 +53,7 @@ cp storctl-artifacts.example.json drivers/storctl-artifacts.json
 后面只需要改三个文件：
 
 ```text
-hosts.yaml
+hosts.csv
 compose.yaml
 storctl-profiles.json
 ```
@@ -64,44 +65,19 @@ drivers/
   storctl-artifacts.json
 ```
 
-## 2. 填 hosts.yaml
+## 2. 填 hosts.csv
 
-`hosts.yaml` 写要接入存储的机器。第一版要求 root 能 SSH 登录。
+`hosts.csv` 写要接入存储的机器，三列就够：
 
-密码方式：
-
-```yaml
-hosts:
-  - name: node-57-122
-    ip: 80.5.21.122
-    user: root
-    password: "replace-me"
+```csv
+ip,password,user
+80.5.21.122,replace-me,
+80.5.21.123,replace-me,root
 ```
 
-多台机器：
+`user` 可以不填，默认是 `root`。如果填普通用户，远端机器需要配置免密 sudo，因为 `copy/apply/install-driver` 要写 `/usr/local/bin`、`/etc/storctl`、NetworkManager 和挂载配置。
 
-```yaml
-hosts:
-  - name: node-57-122
-    ip: 80.5.21.122
-    user: root
-    password: "replace-me"
-
-  - name: node-57-123
-    ip: 80.5.21.123
-    user: root
-    password: "replace-me"
-```
-
-密钥方式：
-
-```yaml
-hosts:
-  - name: node-57-122
-    ip: 80.5.21.122
-    user: root
-    key_file: /root/.ssh/id_rsa
-```
+旧版 `hosts.yaml` 仍然兼容；需要密钥登录、端口等高级字段时可以继续用 YAML，并通过 `--hosts hosts.yaml` 指定。
 
 ## 3. 看 compose.yaml
 
@@ -308,9 +284,22 @@ hosts success fail degraded driver_not_ready no_candidate no_link_ready reboot_r
 ./storctl-compose report --json
 ./storctl-compose report --verbose
 ./storctl-compose report --csv result.csv
+./storctl-compose report --xlsx result.xlsx
 ```
 
-`--csv result.csv` 会输出所有机器，不只失败机器，适合用 Excel 打开或发给别人看。
+`--csv result.csv` 会输出所有机器，不只失败机器。字段只保留：
+
+```text
+ip,command,status,code,message,protocol
+```
+
+`protocol` 只有 `rdma` / `tcp` 两种值。想直接给 Excel 打开，推荐：
+
+```bash
+./storctl-compose report --xlsx result.xlsx
+```
+
+`xlsx` 第一行自带筛选，列宽也已经调大。
 
 失败尝试日志在：
 

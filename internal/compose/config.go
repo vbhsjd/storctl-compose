@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,8 @@ import (
 func LoadInputs(hostsPath, configPath string) (HostsFile, Config, error) {
 	var hosts HostsFile
 	cfg := Config{AllowTCPFallback: true}
-	if err := readYAML(hostsPath, &hosts); err != nil {
+	resolvedHostsPath := resolveHostsPath(hostsPath)
+	if err := readHosts(resolvedHostsPath, &hosts); err != nil {
 		return hosts, cfg, err
 	}
 	if err := readYAML(configPath, &cfg); err != nil {
@@ -28,6 +30,27 @@ func LoadInputs(hostsPath, configPath string) (HostsFile, Config, error) {
 	return hosts, cfg, nil
 }
 
+func resolveHostsPath(path string) string {
+	if path == "hosts.csv" {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+		if _, err := os.Stat("hosts.yaml"); err == nil {
+			return "hosts.yaml"
+		}
+	}
+	return path
+}
+
+func readHosts(path string, hosts *HostsFile) error {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".csv":
+		return readHostsCSV(path, hosts)
+	default:
+		return readYAML(path, hosts)
+	}
+}
+
 func readYAML(path string, out any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -37,6 +60,97 @@ func readYAML(path string, out any) error {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
 	return nil
+}
+
+func readHostsCSV(path string, hosts *HostsFile) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	defer f.Close()
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1
+	r.TrimLeadingSpace = true
+	records, err := r.ReadAll()
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	if len(records) == 0 {
+		return fmt.Errorf("%s must contain at least one host", path)
+	}
+	start := 0
+	cols := map[string]int{"ip": 0, "password": 1, "user": 2}
+	if looksLikeHeader(records[0]) {
+		start = 1
+		cols = parseHostsCSVHeader(records[0])
+	}
+	for line, rec := range records[start:] {
+		if isEmptyCSVRecord(rec) {
+			continue
+		}
+		host := Host{
+			Name:     csvField(rec, cols["ip"]),
+			IP:       csvField(rec, cols["ip"]),
+			Password: csvField(rec, cols["password"]),
+			User:     csvField(rec, cols["user"]),
+		}
+		if host.User == "" {
+			host.User = "root"
+		}
+		if host.Name == "" {
+			return fmt.Errorf("%s row %d requires ip", path, start+line+1)
+		}
+		hosts.Hosts = append(hosts.Hosts, host)
+	}
+	if len(hosts.Hosts) == 0 {
+		return fmt.Errorf("%s must contain at least one host", path)
+	}
+	return nil
+}
+
+func looksLikeHeader(rec []string) bool {
+	for _, field := range rec {
+		switch normalizeCSVHeader(field) {
+		case "ip", "password", "passwd", "user", "username", "密码", "账号", "用户名":
+			return true
+		}
+	}
+	return false
+}
+
+func parseHostsCSVHeader(header []string) map[string]int {
+	cols := map[string]int{"ip": -1, "password": -1, "user": -1}
+	for i, field := range header {
+		switch normalizeCSVHeader(field) {
+		case "ip", "host", "hostname":
+			cols["ip"] = i
+		case "password", "passwd", "密码":
+			cols["password"] = i
+		case "user", "username", "账号", "用户名":
+			cols["user"] = i
+		}
+	}
+	return cols
+}
+
+func normalizeCSVHeader(field string) string {
+	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(field, "\ufeff")))
+}
+
+func csvField(rec []string, index int) string {
+	if index < 0 || index >= len(rec) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(rec[index], "\ufeff"))
+}
+
+func isEmptyCSVRecord(rec []string) bool {
+	for _, field := range rec {
+		if strings.TrimSpace(field) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func applyConfigDefaults(cfg *Config) {
@@ -59,15 +173,19 @@ func applyConfigDefaults(cfg *Config) {
 
 func validateHosts(hosts HostsFile) error {
 	if len(hosts.Hosts) == 0 {
-		return fmt.Errorf("hosts.yaml must contain at least one host")
+		return fmt.Errorf("hosts file must contain at least one host")
 	}
 	seen := map[string]bool{}
 	for i, host := range hosts.Hosts {
-		if strings.TrimSpace(host.Name) == "" || strings.TrimSpace(host.IP) == "" || strings.TrimSpace(host.User) == "" {
-			return fmt.Errorf("hosts[%d] requires name, ip, and user", i)
+		if strings.TrimSpace(host.Name) == "" {
+			host.Name = host.IP
 		}
-		if host.User != "root" {
-			return fmt.Errorf("host %s must use root login in v1", host.Name)
+		if strings.TrimSpace(host.User) == "" {
+			host.User = "root"
+		}
+		hosts.Hosts[i] = host
+		if strings.TrimSpace(host.Name) == "" || strings.TrimSpace(host.IP) == "" || strings.TrimSpace(host.User) == "" {
+			return fmt.Errorf("hosts[%d] requires ip; user defaults to root", i)
 		}
 		if host.Password == "" && host.KeyFile == "" {
 			return fmt.Errorf("host %s requires password or key_file", host.Name)

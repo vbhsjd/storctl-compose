@@ -9,6 +9,7 @@
 ```text
 storctl-compose
 storctl-linux-arm64
+hosts.csv.example
 hosts.yaml.example
 compose.yaml.example
 storctl-profiles.example.json
@@ -20,7 +21,7 @@ storctl-artifacts.example.json
 准备本地配置：
 
 ```bash
-cp hosts.yaml.example hosts.yaml
+cp hosts.csv.example hosts.csv
 cp compose.yaml.example compose.yaml
 cp storctl-profiles.example.json storctl-profiles.json
 mkdir -p drivers reports
@@ -29,15 +30,14 @@ cp storctl-artifacts.example.json drivers/storctl-artifacts.json
 
 ## 2. 编辑配置
 
-`hosts.yaml` 只放登录信息：
+`hosts.csv` 只放登录信息：
 
-```yaml
-hosts:
-  - name: node-57-122
-    ip: 80.5.21.122
-    user: root
-    password: "replace-me"
+```csv
+ip,password,user
+80.5.21.122,replace-me,
 ```
+
+`user` 不填默认 `root`。如果用普通用户，目标机需要配置免密 sudo。
 
 `compose.yaml` 通常只需要确认路径：
 

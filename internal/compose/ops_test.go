@@ -94,7 +94,7 @@ func TestDiscoverCandidatesFiltersAndSorts(t *testing.T) {
 	addIface("enp23s0f0", "hinic3", "200000", "1", "up", "", true)
 	addIface("enp23s0f1", "hinic3", "50000", "1", "up", "", true)
 	addIface("mlx0", "mlx5_core", "200000", "1", "up", "", true)
-	candidates, err := discoverCandidates(context.Background(), r, "80.5.21.122", t.TempDir())
+	candidates, err := discoverCandidates(context.Background(), r, Host{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestDiscoverCandidatesBringsDownHinicPortUpAndProbesHilink(t *testing.T) {
 	r.outputs["hinicadm3 hilink_port -i 'hinic0' -p 0 -s"] = CommandResult{Stdout: "link\npresent\nspeed = 200GE\n"}
 	r.outputs["hinicadm3 hilink_port -i 'hinic0' -p 0"] = CommandResult{Stdout: "link_state = link\nrx_los = 0\nfec = RSFEC\n"}
 	r.outputs["hinicadm3 hilink_count -i 'hinic0' -p 0"] = CommandResult{Stdout: "Pre-Ber:0.00\n"}
-	candidates, err := discoverCandidates(context.Background(), r, "80.5.21.122", dir)
+	candidates, err := discoverCandidates(context.Background(), r, Host{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestDiscoverCandidatesFallsBackToLinuxNICForHilinkProbe(t *testing.T) {
 	r.outputs["hinicadm3 hilink_port -i 'eth3' -p 0 -s"] = CommandResult{Stdout: "link\npresent\nspeed = 200GE\n"}
 	r.outputs["hinicadm3 hilink_port -i 'eth3' -p 0"] = CommandResult{Stdout: "link_state = link\nrx_los = 0\nfault_count = 0\n"}
 	r.outputs["hinicadm3 hilink_count -i 'eth3' -p 0"] = CommandResult{}
-	candidates, err := discoverCandidates(context.Background(), r, "141.61.50.185", dir)
+	candidates, err := discoverCandidates(context.Background(), r, Host{Name: "node", IP: "141.61.50.185", User: "root", Password: "x"}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,6 +385,38 @@ func TestCopyTimeoutReturnsTimeoutCode(t *testing.T) {
 	results := app.Copy(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "1.1.1.1", User: "root", Password: "x"}}}, cfg, Options{ReportDir: dir, Concurrency: 1, Timeout: 5 * time.Millisecond})
 	if len(results) != 1 || results[0].Code != "timeout" {
 		t.Fatalf("unexpected result: %+v", results)
+	}
+}
+
+func TestCopyWithNonRootUsesPasswordlessSudo(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(dir)
+	storctl := filepath.Join(dir, "storctl")
+	profile := filepath.Join(dir, "profiles.json")
+	drivers := filepath.Join(dir, "drivers")
+	_ = os.WriteFile(storctl, []byte("storctl-bin"), 0755)
+	_ = os.WriteFile(profile, []byte("{}"), 0644)
+	_ = os.MkdirAll(drivers, 0755)
+	_ = os.WriteFile(filepath.Join(drivers, "storctl-artifacts.json"), []byte("{}"), 0644)
+	cfg.StorctlBin = storctl
+	cfg.ProfileFile = profile
+	cfg.ArtifactSrc = drivers
+	r := &fakeRemote{outputs: map[string]CommandResult{}, errs: map[string]error{}}
+	for _, command := range []string{
+		"sudo -n sh -c 'install -D -m 0755 '\\''/tmp/storctl-compose-node/storctl'\\'' '\\''/usr/local/bin/storctl'\\'''",
+		"sudo -n sh -c 'install -D -m 0644 '\\''/tmp/storctl-compose-node/profiles.json'\\'' '\\''/etc/storctl/profiles.json'\\'''",
+		"sudo -n sh -c 'mkdir -p '\\''/root/storage_pkgs'\\'''",
+		"sudo -n sh -c 'cp -a '\\''/tmp/storctl-compose-node/storage_pkgs/.'\\'' '\\''/root/storage_pkgs/'\\'''",
+	} {
+		r.outputs[command] = CommandResult{}
+	}
+	app := &App{Dialer: fakeDialer{remotes: map[string]*fakeRemote{"node": r}}, Out: os.Stdout}
+	results := app.Copy(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "1.1.1.1", User: "admin", Password: "x"}}}, cfg, Options{ReportDir: dir, Concurrency: 1})
+	if len(results) != 1 || results[0].Status != "OK" {
+		t.Fatalf("unexpected result: %+v", results)
+	}
+	if !containsRun(r.runs, "sudo -n sh -c 'install -D -m 0755 '\\''/tmp/storctl-compose-node/storctl'\\'' '\\''/usr/local/bin/storctl'\\'''") {
+		t.Fatalf("sudo install not called: %+v", r.runs)
 	}
 }
 

@@ -7,6 +7,7 @@ storctl-compose
 storctl-linux-arm64
 storctl-profiles.json
 storctl-artifacts.json
+hosts.csv.example
 hosts.yaml.example
 compose.yaml.example
 storctl-profiles.example.json
@@ -27,7 +28,7 @@ checksums.txt
   --profiles ./storctl-profiles.json \
   --drivers ./drivers \
   --config ./compose.yaml \
-  --hosts ./hosts.yaml \
+  --hosts ./hosts.csv \
   --matrix ./examples/driver-matrix.yaml \
   --out ./bundles \
   --name c4-openeuler22-aarch64

@@ -1,6 +1,8 @@
 package compose
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -8,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -198,41 +199,23 @@ func WriteReportCSV(reportDir string, out io.Writer) error {
 	}
 	w := csv.NewWriter(out)
 	if err := w.Write([]string{
-		"host",
 		"ip",
 		"command",
 		"status",
 		"code",
 		"message",
-		"selected_nic",
-		"degraded",
-		"reboot_required",
-		"candidate_count",
+		"protocol",
 	}); err != nil {
 		return err
 	}
 	for _, result := range report.Results {
-		code := result.Code
-		message := trimReportMessage(result.Message)
-		if result.Status == "OK" {
-			if result.Degraded {
-				code = "degraded"
-			} else if code == "" {
-				code = "ok"
-			}
-			message = successMessage(result)
-		}
 		if err := w.Write([]string{
-			result.Host,
 			result.IP,
 			result.Command,
 			result.Status,
-			code,
-			message,
-			result.SelectedNIC,
-			strconv.FormatBool(result.Degraded),
-			strconv.FormatBool(result.RebootRequired),
-			strconv.Itoa(len(result.Candidates)),
+			reportCode(result),
+			reportMessage(result),
+			reportProtocol(result),
 		}); err != nil {
 			return err
 		}
@@ -240,6 +223,171 @@ func WriteReportCSV(reportDir string, out io.Writer) error {
 	w.Flush()
 	return w.Error()
 }
+
+func WriteReportXLSX(reportDir string, out io.Writer) error {
+	report, err := LoadReport(reportDir)
+	if err != nil {
+		return err
+	}
+	rows := [][]string{{"ip", "command", "status", "code", "message", "protocol"}}
+	for _, result := range report.Results {
+		rows = append(rows, []string{
+			result.IP,
+			result.Command,
+			result.Status,
+			reportCode(result),
+			reportMessage(result),
+			reportProtocol(result),
+		})
+	}
+	zw := zip.NewWriter(out)
+	files := map[string]string{
+		"[Content_Types].xml":        contentTypesXML,
+		"_rels/.rels":                rootRelsXML,
+		"xl/workbook.xml":            workbookXML,
+		"xl/_rels/workbook.xml.rels": workbookRelsXML,
+		"xl/styles.xml":              stylesXML,
+		"xl/worksheets/sheet1.xml":   sheetXML(rows),
+		"docProps/core.xml":          coreXML,
+		"docProps/app.xml":           appXML,
+	}
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			_ = zw.Close()
+			return err
+		}
+		if _, err := io.WriteString(w, body); err != nil {
+			_ = zw.Close()
+			return err
+		}
+	}
+	return zw.Close()
+}
+
+func reportCode(result HostResult) string {
+	if result.Status == "OK" && result.Code == "" {
+		return "ok"
+	}
+	return result.Code
+}
+
+func reportMessage(result HostResult) string {
+	if result.Status == "OK" {
+		return successMessage(result)
+	}
+	return trimReportMessage(result.Message)
+}
+
+func reportProtocol(result HostResult) string {
+	if result.Degraded || strings.Contains(strings.ToLower(result.Message), "tcp") {
+		return "tcp"
+	}
+	return "rdma"
+}
+
+func sheetXML(rows [][]string) string {
+	lastRow := len(rows)
+	if lastRow == 0 {
+		lastRow = 1
+	}
+	var b bytes.Buffer
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
+	b.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
+	b.WriteString(`<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`)
+	b.WriteString(`<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="4" width="16" customWidth="1"/><col min="5" max="5" width="80" customWidth="1"/><col min="6" max="6" width="12" customWidth="1"/></cols>`)
+	b.WriteString(`<sheetData>`)
+	for r, row := range rows {
+		b.WriteString(fmt.Sprintf(`<row r="%d">`, r+1))
+		for c, value := range row {
+			cell := fmt.Sprintf("%s%d", columnName(c+1), r+1)
+			style := ""
+			if r == 0 {
+				style = ` s="1"`
+			}
+			b.WriteString(fmt.Sprintf(`<c r="%s" t="inlineStr"%s><is><t>`, cell, style))
+			writeEscaped(&b, value)
+			b.WriteString(`</t></is></c>`)
+		}
+		b.WriteString(`</row>`)
+	}
+	b.WriteString(`</sheetData>`)
+	b.WriteString(fmt.Sprintf(`<autoFilter ref="A1:F%d"/>`, lastRow))
+	b.WriteString(`<dataValidations count="1"><dataValidation type="list" allowBlank="1" sqref="F2:F1048576"><formula1>"rdma,tcp"</formula1></dataValidation></dataValidations>`)
+	b.WriteString(`</worksheet>`)
+	return b.String()
+}
+
+func columnName(n int) string {
+	name := ""
+	for n > 0 {
+		n--
+		name = string(rune('A'+n%26)) + name
+		n /= 26
+	}
+	return name
+}
+
+func writeEscaped(b *bytes.Buffer, value string) {
+	for _, r := range value {
+		switch r {
+		case '&':
+			b.WriteString("&amp;")
+		case '<':
+			b.WriteString("&lt;")
+		case '>':
+			b.WriteString("&gt;")
+		case '"':
+			b.WriteString("&quot;")
+		default:
+			b.WriteRune(r)
+		}
+	}
+}
+
+const contentTypesXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`
+
+const rootRelsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`
+
+const workbookXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="storctl-compose" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`
+
+const workbookRelsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`
+
+const stylesXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/></cellXfs>
+</styleSheet>`
+
+const coreXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>storctl-compose report</dc:title></cp:coreProperties>`
+
+const appXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>storctl-compose</Application></Properties>`
 
 func HasFailures(results []HostResult) bool {
 	for _, result := range results {

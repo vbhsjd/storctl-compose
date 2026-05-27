@@ -10,7 +10,7 @@ No Ansible, sshpass, Python, or hand-written storage NIC names are required.
 unzip storctl-compose-*.zip
 cd storctl-compose-*
 mkdir -p drivers reports
-cp hosts.yaml.example hosts.yaml
+cp hosts.csv.example hosts.csv
 cp compose.yaml.example compose.yaml
 cp storctl-profiles.example.json storctl-profiles.json
 cp storctl-artifacts.example.json drivers/storctl-artifacts.json
@@ -18,7 +18,7 @@ cp storctl-artifacts.example.json drivers/storctl-artifacts.json
 
 Edit:
 
-- `hosts.yaml`: target host IP, root user, password or key.
+- `hosts.csv`: target host IP, password, and optional user. User defaults to `root`.
 - `compose.yaml`: profile name, local driver directory, remote paths.
 - `storctl-profiles.json`: VLAN, gateway, IP derivation, and mounts.
 
@@ -45,7 +45,7 @@ Then run all hosts:
 ## Defaults
 
 ```text
---hosts hosts.yaml
+--hosts hosts.csv
 --config compose.yaml
 --report-dir reports
 --concurrency 30
@@ -61,11 +61,13 @@ Useful flags:
 ./storctl-compose report --json
 ./storctl-compose report --verbose
 ./storctl-compose report --csv result.csv
+./storctl-compose report --xlsx result.xlsx
 ./storctl-compose install-driver --upgrade-firmware
 ./storctl-compose version --json
 ```
 
-`--csv result.csv` writes every host, including successful hosts, for spreadsheets or sharing.
+`--csv result.csv` writes every host with only `ip,command,status,code,message,protocol`.
+Use `--xlsx result.xlsx` for an Excel file with a filter row, wider columns, and `protocol` values of `rdma` or `tcp`.
 
 ## Release Package
 
@@ -75,6 +77,7 @@ Release zips contain:
 storctl-compose
 storctl-linux-arm64
 hosts.yaml.example
+hosts.csv.example
 compose.yaml
 storctl-profiles.json
 storctl-artifacts.example.json
@@ -89,7 +92,7 @@ examples/
 
 - `storctl-compose` always orchestrates 1823.
 - Use standalone `storctl-linux-arm64` for CX7.
-- Targets must allow root SSH login.
+- `hosts.csv` defaults the user to `root`. Non-root SSH users require passwordless sudo.
 - `apply` never installs drivers; run `install-driver` first.
 - The tool never reboots hosts automatically.
 - Real driver packages are not stored in public releases.
