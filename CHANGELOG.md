@@ -27,3 +27,5 @@
 - Public `compose.yaml` no longer exposes `nic_type`; `storctl-compose` is fixed to 1823 orchestration.
 - Reports now include candidate NIC probe summaries and aggregate link/optical
   failure counters.
+- Hilink probing now falls back from `hinicX` device names to Linux NIC names
+  such as `eth3`, matching field behavior on some 1823 hosts.

@@ -403,10 +403,33 @@ func parseHinicInfo(info string) map[string]hinicPort {
 }
 
 func probeHilink(ctx context.Context, remote Remote, probeDir string, candidate CandidateNIC) CandidateNIC {
-	base := "hinicadm3 hilink_port -i " + shellQuote(candidate.HinicDevice) + " -p " + strconv.Itoa(candidate.PortID)
-	simple, simpleErr := remote.Run(ctx, base+" -s")
-	full, fullErr := remote.Run(ctx, base)
-	count, _ := remote.Run(ctx, "hinicadm3 hilink_count -i "+shellQuote(candidate.HinicDevice)+" -p "+strconv.Itoa(candidate.PortID))
+	attempts := []string{candidate.HinicDevice}
+	if candidate.Name != "" && candidate.Name != candidate.HinicDevice {
+		attempts = append(attempts, candidate.Name)
+	}
+	var simple, full, count CommandResult
+	var simpleErr, fullErr error
+	for _, device := range attempts {
+		candidate.ProbeDevice = device
+		simple, full, count, simpleErr, fullErr = runHilinkProbe(ctx, remote, device, candidate.PortID)
+		if simpleErr != nil || fullErr != nil {
+			continue
+		}
+		text := simple.Stdout + "\n" + full.Stdout
+		code, message := classifyHilink(text, candidate.Speed, candidate.Carrier)
+		if code == "" {
+			candidate.ProbeStatus = "ready"
+			candidate.ProbeCode = ""
+			candidate.ProbeMessage = "hilink ready"
+			_ = writeCandidateProbe(probeDir, candidate, simple.Stdout+simple.Stderr, full.Stdout+full.Stderr, count.Stdout+count.Stderr)
+			return candidate
+		}
+		candidate.ProbeStatus = "blocked"
+		candidate.ProbeCode = code
+		candidate.ProbeMessage = message
+		_ = writeCandidateProbe(probeDir, candidate, simple.Stdout+simple.Stderr, full.Stdout+full.Stderr, count.Stdout+count.Stderr)
+		return candidate
+	}
 	if simpleErr != nil || fullErr != nil {
 		candidate.ProbeStatus = "failed"
 		candidate.ProbeCode = "hilink_probe_failed"
@@ -414,30 +437,27 @@ func probeHilink(ctx context.Context, remote Remote, probeDir string, candidate 
 		_ = writeCandidateProbe(probeDir, candidate, simple.Stdout+simple.Stderr, full.Stdout+full.Stderr, count.Stdout+count.Stderr)
 		return candidate
 	}
-	text := simple.Stdout + "\n" + full.Stdout
-	code, message := classifyHilink(text, candidate.Speed, candidate.Carrier)
-	if code != "" {
-		candidate.ProbeStatus = "blocked"
-		candidate.ProbeCode = code
-		candidate.ProbeMessage = message
-	} else {
-		candidate.ProbeStatus = "ready"
-		candidate.ProbeMessage = "hilink ready"
-	}
-	_ = writeCandidateProbe(probeDir, candidate, simple.Stdout+simple.Stderr, full.Stdout+full.Stderr, count.Stdout+count.Stderr)
 	return candidate
+}
+
+func runHilinkProbe(ctx context.Context, remote Remote, device string, portID int) (CommandResult, CommandResult, CommandResult, error, error) {
+	base := "hinicadm3 hilink_port -i " + shellQuote(device) + " -p " + strconv.Itoa(portID)
+	simple, simpleErr := remote.Run(ctx, base+" -s")
+	full, fullErr := remote.Run(ctx, base)
+	count, _ := remote.Run(ctx, "hinicadm3 hilink_count -i "+shellQuote(device)+" -p "+strconv.Itoa(portID))
+	return simple, full, count, simpleErr, fullErr
 }
 
 func classifyHilink(text string, speed int, carrier bool) (string, string) {
 	lower := strings.ToLower(text)
 	switch {
-	case strings.Contains(lower, "absent"):
+	case regexp.MustCompile(`(?m)(^|\s|=)absent(\s|$)`).MatchString(lower):
 		return "optical_absent", "optical module is absent"
-	case strings.Contains(lower, "fault"):
+	case regexp.MustCompile(`(?m)(^|\s|=)fault(\s|$)`).MatchString(lower):
 		return "optical_fault", "optical module reports fault"
 	case regexp.MustCompile(`rx_los\s*=\s*[1-9]`).MatchString(lower):
 		return "link_not_ready", "rx_los is asserted"
-	case strings.Contains(lower, "no link"):
+	case regexp.MustCompile(`(?m)(^|\s|=)no link(\s|$)`).MatchString(lower):
 		return "link_not_ready", "hilink reports no link"
 	case speed > 0 && speed < 100000:
 		return "speed_unexpected", fmt.Sprintf("link speed is %dMb/s, expected >=100000Mb/s", speed)

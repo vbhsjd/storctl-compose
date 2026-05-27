@@ -132,11 +132,45 @@ func TestDiscoverCandidatesBringsDownHinicPortUpAndProbesHilink(t *testing.T) {
 	if len(candidates) != 1 || candidates[0].ProbeStatus != "ready" || candidates[0].HinicDevice != "hinic0" || candidates[0].PortID != 0 {
 		t.Fatalf("unexpected candidates: %+v", candidates)
 	}
+	if candidates[0].ProbeDevice != "hinic0" {
+		t.Fatalf("unexpected probe device: %+v", candidates[0])
+	}
 	if !containsRun(r.runs, "ip link set dev 'enp23s0f1' up && sleep 2") {
 		t.Fatalf("interface was not brought up: %+v", r.runs)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "enp23s0f1.hilink.txt")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDiscoverCandidatesFallsBackToLinuxNICForHilinkProbe(t *testing.T) {
+	dir := t.TempDir()
+	r := &fakeRemote{outputs: map[string]CommandResult{}, errs: map[string]error{}}
+	r.outputs["ls -1 /sys/class/net"] = CommandResult{Stdout: "eth3\n"}
+	addCandidateInterface(r, "eth3", "hinic3", "200000", "1", "up", "")
+	r.outputs["hinicadm3 info 2>/dev/null || true"] = CommandResult{Stdout: "Card num:1\n|----hinic1(CAL_2X200G_INTERNET)\n         |--------0000:a1:00.0(NIC:eth3)\n"}
+	r.outputs["ip link set dev 'eth3' up && sleep 2"] = CommandResult{}
+	r.outputs["hinicadm3 hilink_port -i 'hinic1' -p 0 -s"] = CommandResult{Stderr: "invalid device\n", ExitCode: 1}
+	r.errs["hinicadm3 hilink_port -i 'hinic1' -p 0 -s"] = fmt.Errorf("exit 1")
+	r.outputs["hinicadm3 hilink_port -i 'hinic1' -p 0"] = CommandResult{Stderr: "invalid device\n", ExitCode: 1}
+	r.errs["hinicadm3 hilink_port -i 'hinic1' -p 0"] = fmt.Errorf("exit 1")
+	r.outputs["hinicadm3 hilink_count -i 'hinic1' -p 0"] = CommandResult{}
+	r.outputs["hinicadm3 hilink_port -i 'eth3' -p 0 -s"] = CommandResult{Stdout: "link\npresent\nspeed = 200GE\n"}
+	r.outputs["hinicadm3 hilink_port -i 'eth3' -p 0"] = CommandResult{Stdout: "link_state = link\nrx_los = 0\nfault_count = 0\n"}
+	r.outputs["hinicadm3 hilink_count -i 'eth3' -p 0"] = CommandResult{}
+	candidates, err := discoverCandidates(context.Background(), r, "141.61.50.185", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].ProbeStatus != "ready" || candidates[0].ProbeDevice != "eth3" {
+		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+}
+
+func TestClassifyHilinkDoesNotTreatFaultCounterAsOpticalFault(t *testing.T) {
+	code, message := classifyHilink("link_state = link\nrx_los = 0\nfault_count = 0\nspeed = 200GE\n", 200000, true)
+	if code != "" || message != "" {
+		t.Fatalf("unexpected fault classification: %s %s", code, message)
 	}
 }
 

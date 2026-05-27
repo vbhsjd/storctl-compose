@@ -73,6 +73,7 @@ type CandidateNIC struct {
 	Score        int    `json:"score,omitempty"`
 	HinicDevice  string `json:"hinic_device,omitempty"`
 	PortID       int    `json:"port_id,omitempty"`
+	ProbeDevice  string `json:"probe_device,omitempty"`
 	ProbeStatus  string `json:"probe_status,omitempty"`
 	ProbeCode    string `json:"probe_code,omitempty"`
 	ProbeMessage string `json:"probe_message,omitempty"`
