@@ -105,6 +105,15 @@ case "${cmd}" in
     ;;
 
   ip)
+    if [[ "${1:-}" == "link" && "${2:-}" == "set" && "${3:-}" == "dev" ]]; then
+      dev="${4:-}"
+      action="${5:-}"
+      if [[ "${action}" == "up" && -n "${dev}" ]]; then
+        printf 'up\n' > "${root}/sys/class/net/${dev}/operstate"
+        [[ -f "${root}/sys/class/net/${dev}/carrier_after_up" ]] && cp "${root}/sys/class/net/${dev}/carrier_after_up" "${root}/sys/class/net/${dev}/carrier"
+      fi
+      exit 0
+    fi
     if [[ "${1:-}" == "-o" && "${2:-}" == "-4" && "${3:-}" == "addr" && "${4:-}" == "show" && "${5:-}" == "dev" ]]; then
       dev="${6:-}"
       addr="$(iface_addr "${dev}" || true)"
@@ -144,6 +153,31 @@ case "${cmd}" in
   hinicadm3)
     if [[ "${1:-}" == "info" ]]; then
       cat "${root}/sim/hinicadm3_info" 2>/dev/null || echo "hinic0(CAL_2X200G_INTERNET)"
+    fi
+    if [[ "${1:-}" == "hilink_port" ]]; then
+      dev=""
+      port=""
+      simple="no"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          -i) dev="${2:-}"; shift 2 ;;
+          -p) port="${2:-}"; shift 2 ;;
+          -s) simple="yes"; shift ;;
+          *) shift ;;
+        esac
+      done
+      file="${root}/sim/hilink_${dev}_${port}"
+      [[ "${simple}" == "yes" ]] && file="${file}_simple"
+      if [[ -f "${file}" ]]; then
+        cat "${file}"
+      else
+        printf 'link\npresent\nspeed = 200GE\n'
+      fi
+      exit 0
+    fi
+    if [[ "${1:-}" == "hilink_count" ]]; then
+      printf 'Pre-Ber:0.00\nPost-Ber:0.00\n'
+      exit 0
     fi
     exit 0
     ;;

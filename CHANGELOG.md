@@ -15,9 +15,15 @@
 - Detailed Chinese batch onboarding tutorial under `docs/tutorial.md`.
 - High-fidelity local simulation suite under `tests/sim/`, covering OS/SP,
   artifact, driver, NetworkManager, QoS, mount, fallback, and check flows.
+- 1823 Hilink readiness probing during `apply`, including optical/module/link
+  diagnostics and per-NIC probe logs.
+- Pre-apply `storctl check --json` guard so already-mounted hosts are skipped
+  instead of being reconfigured.
 
 ### Changed
 
 - Ansible wrapper and playbooks moved to `legacy/ansible`; the Go binary is now the primary workflow.
 - Offline bundle helper now packages `storctl-compose` instead of a standalone target-side `storctl` binary.
 - Public `compose.yaml` no longer exposes `nic_type`; `storctl-compose` is fixed to 1823 orchestration.
+- Reports now include candidate NIC probe summaries and aggregate link/optical
+  failure counters.

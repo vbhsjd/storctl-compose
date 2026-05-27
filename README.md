@@ -296,6 +296,10 @@ OK node-57-122 check checked
 ```text
 reports/<host>/attempts/<nic>.out
 reports/<host>/attempts/<nic>.err
+reports/<host>/nic-probe/<nic>.json
+reports/<host>/nic-probe/<nic>.hilink.txt
+reports/<host>/nic-probe/<nic>.hilink-simple.txt
+reports/<host>/nic-probe/<nic>.hilink-count.txt
 ```
 
 ## 常见问题
@@ -306,9 +310,26 @@ reports/<host>/attempts/<nic>.err
 
 `no_candidate_nic`：目标机没有发现 1823 物理口，登录目标机跑 `ethtool -i <nic>` 看 driver 是否是 `hinic3` 或 `hinic`。
 
+`no_link_ready_nic`：发现了 1823 物理口，但光模块、物理链路或速率不就绪。先看 `reports/<host>/nic-probe/`。
+
 `all_candidate_nics_failed`：找到了 1823 网卡，但每个候选口都挂载失败，看 `reports/<host>/attempts/`。
 
 `tcp_fallback_degraded`：TCP 挂载成功但 RDMA 未成功，继续检查 `rdma link`、交换机 PFC/ECN、服务端 NFS RDMA 端口。
+
+小白排障命令：
+
+```bash
+hinicadm3 info
+hinicadm3 hilink_port -i hinic0 -p 0
+hinicadm3 hilink_port -i hinic0 -p 1
+ethtool -i eth0
+ethtool eth0
+rdma link
+```
+
+`hinicadm3 -i` 通常填 `hinic0` 这种设备名，不是 `eth0/enp...`。先用 `hinicadm3 info` 看 `hinic0` 下面对应哪些 `NIC:<网卡名>`。
+
+如果存储口被手动 `down`，`storctl-compose apply` 会尝试在目标机执行 `ip link set dev <nic> up`。如果是交换机端口 shutdown、光模块异常、线缆问题，工具只会报告，不会自动修复。
 
 ## 重要边界
 

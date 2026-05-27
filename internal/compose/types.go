@@ -43,17 +43,18 @@ type Options struct {
 }
 
 type HostResult struct {
-	Host           string `json:"host"`
-	IP             string `json:"ip"`
-	Command        string `json:"command"`
-	Status         string `json:"status"`
-	Code           string `json:"code,omitempty"`
-	Message        string `json:"message,omitempty"`
-	SelectedNIC    string `json:"selected_nic,omitempty"`
-	RebootRequired bool   `json:"reboot_required,omitempty"`
-	Degraded       bool   `json:"degraded,omitempty"`
-	StartedAt      string `json:"started_at"`
-	FinishedAt     string `json:"finished_at"`
+	Host           string         `json:"host"`
+	IP             string         `json:"ip"`
+	Command        string         `json:"command"`
+	Status         string         `json:"status"`
+	Code           string         `json:"code,omitempty"`
+	Message        string         `json:"message,omitempty"`
+	SelectedNIC    string         `json:"selected_nic,omitempty"`
+	Candidates     []CandidateNIC `json:"candidates,omitempty"`
+	RebootRequired bool           `json:"reboot_required,omitempty"`
+	Degraded       bool           `json:"degraded,omitempty"`
+	StartedAt      string         `json:"started_at"`
+	FinishedAt     string         `json:"finished_at"`
 }
 
 type CommandResult struct {
@@ -63,13 +64,18 @@ type CommandResult struct {
 }
 
 type CandidateNIC struct {
-	Name    string
-	Driver  string
-	Speed   int
-	Carrier bool
-	HasIPv4 bool
-	Up      bool
-	Score   int
+	Name         string `json:"name"`
+	Driver       string `json:"driver,omitempty"`
+	Speed        int    `json:"speed,omitempty"`
+	Carrier      bool   `json:"carrier"`
+	HasIPv4      bool   `json:"has_ipv4"`
+	Up           bool   `json:"up"`
+	Score        int    `json:"score,omitempty"`
+	HinicDevice  string `json:"hinic_device,omitempty"`
+	PortID       int    `json:"port_id,omitempty"`
+	ProbeStatus  string `json:"probe_status,omitempty"`
+	ProbeCode    string `json:"probe_code,omitempty"`
+	ProbeMessage string `json:"probe_message,omitempty"`
 }
 
 type VersionInfo struct {

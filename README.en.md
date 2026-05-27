@@ -86,3 +86,29 @@ examples/
 - `apply` never installs drivers; run `install-driver` first.
 - The tool never reboots hosts automatically.
 - Real driver packages are not stored in public releases.
+
+## Troubleshooting
+
+Probe logs are saved under:
+
+```text
+reports/<host>/nic-probe/<nic>.json
+reports/<host>/nic-probe/<nic>.hilink.txt
+reports/<host>/nic-probe/<nic>.hilink-simple.txt
+reports/<host>/nic-probe/<nic>.hilink-count.txt
+```
+
+Useful target-host commands:
+
+```bash
+hinicadm3 info
+hinicadm3 hilink_port -i hinic0 -p 0
+hinicadm3 hilink_port -i hinic0 -p 1
+ethtool -i eth0
+ethtool eth0
+rdma link
+```
+
+`hinicadm3 -i` usually expects `hinic0`, not `eth0/enp...`. Use `hinicadm3 info` to map `hinic0` ports to `NIC:<linux-nic>`.
+
+If a local NIC is administratively down, `apply` tries `ip link set dev <nic> up`. Switch shutdown, bad optics, or cable issues are reported but not changed.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,17 +72,27 @@ func (a *App) InstallDriver(ctx context.Context, hosts HostsFile, cfg Config, op
 func (a *App) Apply(ctx context.Context, hosts HostsFile, cfg Config, opts Options) []HostResult {
 	return a.runHosts(ctx, hosts.Hosts, cfg, opts, "apply", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "apply")
-		candidates, err := discoverCandidates(ctx, remote, host.IP)
+		if ok, degraded, msg := precheckMounted(ctx, remote, cfg, opts.ReportDir, host.Name); ok {
+			result.Degraded = degraded
+			return finishOK(result, msg)
+		}
+		probeDir := filepath.Join(opts.ReportDir, host.Name, "nic-probe")
+		candidates, err := discoverCandidates(ctx, remote, host.IP, probeDir)
+		result.Candidates = candidates
 		if err != nil {
 			return finishFail(result, "discover_failed", err.Error())
 		}
 		if len(candidates) == 0 {
 			return finishFail(result, "no_candidate_nic", "no physical 1823 NIC found by ethtool -i")
 		}
+		ready := readyCandidates(candidates)
+		if len(ready) == 0 {
+			return finishFail(result, "no_link_ready_nic", "no 1823 NIC has ready optical/module/link state")
+		}
 		attemptDir := filepath.Join(opts.ReportDir, host.Name, "attempts")
 		_ = os.MkdirAll(attemptDir, 0755)
 		last := ""
-		for _, nic := range candidates {
+		for _, nic := range ready {
 			cmd := applyCommand(cfg, host, nic.Name)
 			out, err := remote.Run(ctx, cmd)
 			_ = os.WriteFile(filepath.Join(attemptDir, nic.Name+".out"), []byte(out.Stdout), 0644)
@@ -229,11 +240,86 @@ func applyCommand(cfg Config, host Host, nic string) string {
 	return strings.Join(parts, " ")
 }
 
-func discoverCandidates(ctx context.Context, remote Remote, mgmtIP string) ([]CandidateNIC, error) {
+type storctlCheckReport struct {
+	State *struct {
+		Mounts []struct {
+			MountPoint string
+		}
+		Degraded bool `json:"degraded"`
+	} `json:"state"`
+	Checks []struct {
+		Name    string `json:"name"`
+		Status  string `json:"status"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"checks"`
+}
+
+func precheckMounted(ctx context.Context, remote Remote, cfg Config, reportDir, hostName string) (bool, bool, string) {
+	out, err := remote.Run(ctx, shellQuote(cfg.RemoteBin)+" check --json")
+	if reportDir != "" && hostName != "" {
+		dir := filepath.Join(reportDir, hostName)
+		_ = os.MkdirAll(dir, 0755)
+		_ = os.WriteFile(filepath.Join(dir, "precheck.json"), []byte(out.Stdout), 0644)
+	}
+	if err != nil || strings.TrimSpace(out.Stdout) == "" {
+		return false, false, ""
+	}
+	var report storctlCheckReport
+	if err := json.Unmarshal([]byte(out.Stdout), &report); err != nil {
+		return false, false, ""
+	}
+	return checkReportAlreadyMounted(report, cfg.AllowTCPFallback)
+}
+
+func checkReportAlreadyMounted(report storctlCheckReport, allowTCPFallback bool) (bool, bool, string) {
+	if report.State == nil || len(report.State.Mounts) == 0 {
+		return false, false, ""
+	}
+	checkByMount := map[string]struct {
+		Code    string
+		Message string
+	}{}
+	for _, check := range report.Checks {
+		target, ok := strings.CutPrefix(check.Name, "mount:")
+		if !ok {
+			continue
+		}
+		checkByMount[target] = struct {
+			Code    string
+			Message string
+		}{Code: check.Code, Message: check.Message}
+	}
+	degraded := report.State.Degraded
+	for _, mount := range report.State.Mounts {
+		if mount.MountPoint == "" {
+			return false, false, ""
+		}
+		check, ok := checkByMount[mount.MountPoint]
+		if !ok {
+			return false, false, ""
+		}
+		if check.Code == "mount_rdma" {
+			continue
+		}
+		if allowTCPFallback && check.Code == "mount_not_rdma" && strings.Contains(strings.ToLower(check.Message), "nfs") {
+			degraded = true
+			continue
+		}
+		return false, false, ""
+	}
+	if degraded {
+		return true, true, "already mounted degraded tcp-fallback"
+	}
+	return true, false, "already mounted"
+}
+
+func discoverCandidates(ctx context.Context, remote Remote, mgmtIP, probeDir string) ([]CandidateNIC, error) {
 	out, err := remote.Run(ctx, "ls -1 /sys/class/net")
 	if err != nil {
 		return nil, err
 	}
+	hinicMap := parseHinicInfo(remoteStdout(ctx, remote, "hinicadm3 info 2>/dev/null || true"))
 	var candidates []CandidateNIC
 	for _, nic := range strings.Fields(out.Stdout) {
 		if ignoredInterface(nic) {
@@ -249,6 +335,7 @@ func discoverCandidates(ctx context.Context, remote Remote, mgmtIP string) ([]Ca
 		if !strings.HasPrefix(driver, "hinic3") && !strings.HasPrefix(driver, "hinic") {
 			continue
 		}
+		_, _ = remote.Run(ctx, "ip link set dev "+shellQuote(nic)+" up && sleep 2")
 		speed, _ := strconv.Atoi(strings.TrimSpace(remoteStdout(ctx, remote, "cat /sys/class/net/"+shellQuote(nic)+"/speed 2>/dev/null || true")))
 		carrier := strings.TrimSpace(remoteStdout(ctx, remote, "cat /sys/class/net/"+shellQuote(nic)+"/carrier 2>/dev/null || true")) == "1"
 		up := strings.TrimSpace(remoteStdout(ctx, remote, "cat /sys/class/net/"+shellQuote(nic)+"/operstate 2>/dev/null || true")) == "up"
@@ -266,7 +353,17 @@ func discoverCandidates(ctx context.Context, remote Remote, mgmtIP string) ([]Ca
 		if up {
 			score++
 		}
-		candidates = append(candidates, CandidateNIC{Name: nic, Driver: driver, Speed: speed, Carrier: carrier, HasIPv4: hasIPv4, Up: up, Score: score})
+		candidate := CandidateNIC{Name: nic, Driver: driver, Speed: speed, Carrier: carrier, HasIPv4: hasIPv4, Up: up, Score: score, PortID: -1}
+		if port, ok := hinicMap[nic]; ok {
+			candidate.HinicDevice = port.Device
+			candidate.PortID = port.PortID
+			candidate = probeHilink(ctx, remote, probeDir, candidate)
+		} else {
+			candidate.ProbeStatus = "unknown"
+			candidate.ProbeMessage = "hinicadm3 info did not map this Linux NIC; falling back to legacy candidate selection"
+			_ = writeCandidateProbe(probeDir, candidate, "", "", "")
+		}
+		candidates = append(candidates, candidate)
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		if candidates[i].Score == candidates[j].Score {
@@ -275,6 +372,123 @@ func discoverCandidates(ctx context.Context, remote Remote, mgmtIP string) ([]Ca
 		return candidates[i].Score > candidates[j].Score
 	})
 	return candidates, nil
+}
+
+type hinicPort struct {
+	Device string
+	PortID int
+}
+
+func parseHinicInfo(info string) map[string]hinicPort {
+	out := map[string]hinicPort{}
+	device := ""
+	portID := 0
+	devRe := regexp.MustCompile(`\|----(hinic[0-9]+)`)
+	nicRe := regexp.MustCompile(`NIC:([^)]+)`)
+	for _, line := range strings.Split(info, "\n") {
+		if m := devRe.FindStringSubmatch(line); len(m) == 2 {
+			device = m[1]
+			portID = 0
+			continue
+		}
+		if device == "" {
+			continue
+		}
+		if m := nicRe.FindStringSubmatch(line); len(m) == 2 {
+			out[strings.TrimSpace(m[1])] = hinicPort{Device: device, PortID: portID}
+			portID++
+		}
+	}
+	return out
+}
+
+func probeHilink(ctx context.Context, remote Remote, probeDir string, candidate CandidateNIC) CandidateNIC {
+	base := "hinicadm3 hilink_port -i " + shellQuote(candidate.HinicDevice) + " -p " + strconv.Itoa(candidate.PortID)
+	simple, simpleErr := remote.Run(ctx, base+" -s")
+	full, fullErr := remote.Run(ctx, base)
+	count, _ := remote.Run(ctx, "hinicadm3 hilink_count -i "+shellQuote(candidate.HinicDevice)+" -p "+strconv.Itoa(candidate.PortID))
+	if simpleErr != nil || fullErr != nil {
+		candidate.ProbeStatus = "failed"
+		candidate.ProbeCode = "hilink_probe_failed"
+		candidate.ProbeMessage = trimMessage(simple.Stdout + simple.Stderr + full.Stdout + full.Stderr)
+		_ = writeCandidateProbe(probeDir, candidate, simple.Stdout+simple.Stderr, full.Stdout+full.Stderr, count.Stdout+count.Stderr)
+		return candidate
+	}
+	text := simple.Stdout + "\n" + full.Stdout
+	code, message := classifyHilink(text, candidate.Speed, candidate.Carrier)
+	if code != "" {
+		candidate.ProbeStatus = "blocked"
+		candidate.ProbeCode = code
+		candidate.ProbeMessage = message
+	} else {
+		candidate.ProbeStatus = "ready"
+		candidate.ProbeMessage = "hilink ready"
+	}
+	_ = writeCandidateProbe(probeDir, candidate, simple.Stdout+simple.Stderr, full.Stdout+full.Stderr, count.Stdout+count.Stderr)
+	return candidate
+}
+
+func classifyHilink(text string, speed int, carrier bool) (string, string) {
+	lower := strings.ToLower(text)
+	switch {
+	case strings.Contains(lower, "absent"):
+		return "optical_absent", "optical module is absent"
+	case strings.Contains(lower, "fault"):
+		return "optical_fault", "optical module reports fault"
+	case regexp.MustCompile(`rx_los\s*=\s*[1-9]`).MatchString(lower):
+		return "link_not_ready", "rx_los is asserted"
+	case strings.Contains(lower, "no link"):
+		return "link_not_ready", "hilink reports no link"
+	case speed > 0 && speed < 100000:
+		return "speed_unexpected", fmt.Sprintf("link speed is %dMb/s, expected >=100000Mb/s", speed)
+	case !carrier:
+		return "link_not_ready", "kernel carrier is down"
+	}
+	if hilinkSpeed := parseHilinkSpeed(lower); hilinkSpeed > 0 && hilinkSpeed < 100 {
+		return "speed_unexpected", fmt.Sprintf("hilink speed is %dG, expected >=100G", hilinkSpeed)
+	}
+	return "", ""
+}
+
+func parseHilinkSpeed(text string) int {
+	re := regexp.MustCompile(`(?m)^speed\s*=\s*([0-9]+)`)
+	m := re.FindStringSubmatch(text)
+	if len(m) != 2 {
+		return 0
+	}
+	v, _ := strconv.Atoi(m[1])
+	return v
+}
+
+func readyCandidates(candidates []CandidateNIC) []CandidateNIC {
+	var ready []CandidateNIC
+	for _, candidate := range candidates {
+		if candidate.ProbeStatus == "ready" || candidate.ProbeStatus == "unknown" {
+			ready = append(ready, candidate)
+		}
+	}
+	return ready
+}
+
+func writeCandidateProbe(probeDir string, candidate CandidateNIC, simple, full, count string) error {
+	if probeDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(probeDir, 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(candidate, "", "  ")
+	if err != nil {
+		return err
+	}
+	base := filepath.Join(probeDir, candidate.Name)
+	if err := os.WriteFile(base+".json", append(data, '\n'), 0644); err != nil {
+		return err
+	}
+	_ = os.WriteFile(base+".hilink-simple.txt", []byte(simple), 0644)
+	_ = os.WriteFile(base+".hilink.txt", []byte(full), 0644)
+	_ = os.WriteFile(base+".hilink-count.txt", []byte(count), 0644)
+	return nil
 }
 
 func remoteStdout(ctx context.Context, remote Remote, command string) string {
@@ -348,7 +562,10 @@ func writeHostResult(reportDir string, result HostResult) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "last.json"), append(data, '\n'), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "last.json"), append(data, '\n'), 0644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(reportDir, result.Host+".result.json"), append(data, '\n'), 0644)
 }
 
 func failAll(hosts []Host, command, code, msg string) []HostResult {
