@@ -62,10 +62,9 @@ jobs:
             (cd "dist/${pkg}" && sha256sum storctl-compose > storctl-compose.sha256)
             cp "../storctl/dist/storctl-linux-arm64" "dist/${pkg}/storctl-linux-arm64"
             (cd "dist/${pkg}" && sha256sum storctl-linux-arm64 > storctl-linux-arm64.sha256)
-            cp examples/hosts.yaml "dist/${pkg}/hosts.yaml.example"
-            cp examples/compose.yaml "dist/${pkg}/compose.yaml"
-            cp examples/storctl-profiles.json "dist/${pkg}/storctl-profiles.json"
-            cp examples/storctl-artifacts.example.json "dist/${pkg}/storctl-artifacts.example.json"
+            cp hosts.yaml.example compose.yaml.example storctl-profiles.example.json storctl-artifacts.example.json "dist/${pkg}/"
+            cp compose.yaml.example "dist/${pkg}/compose.yaml"
+            cp storctl-profiles.example.json "dist/${pkg}/storctl-profiles.json"
             cp README.md README.en.md CHANGELOG.md LICENSE "dist/${pkg}/"
             cp -R examples "dist/${pkg}/examples"
             cp -R docs "dist/${pkg}/docs"

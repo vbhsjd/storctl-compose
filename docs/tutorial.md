@@ -10,6 +10,8 @@
 storctl-compose
 storctl-linux-arm64
 hosts.yaml.example
+compose.yaml.example
+storctl-profiles.example.json
 compose.yaml
 storctl-profiles.json
 storctl-artifacts.example.json
@@ -19,7 +21,10 @@ storctl-artifacts.example.json
 
 ```bash
 cp hosts.yaml.example hosts.yaml
+cp compose.yaml.example compose.yaml
+cp storctl-profiles.example.json storctl-profiles.json
 mkdir -p drivers reports
+cp storctl-artifacts.example.json drivers/storctl-artifacts.json
 ```
 
 ## 2. 编辑配置

@@ -7,8 +7,11 @@ storctl-compose
 storctl-linux-arm64
 storctl-profiles.json
 storctl-artifacts.json
-compose.yaml
 hosts.yaml.example
+compose.yaml.example
+storctl-profiles.example.json
+storctl-artifacts.example.json
+compose.yaml
 drivers/
 checksums.txt
 ```

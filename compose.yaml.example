@@ -1,0 +1,8 @@
+profile: c4
+profile_file: ./storctl-profiles.json
+artifact_src: ./drivers
+remote_bin: /usr/local/bin/storctl
+remote_profile_file: /etc/storctl/profiles.json
+remote_artifact_dir: /root/storage_pkgs
+allow_tcp_fallback: true
+qos: off

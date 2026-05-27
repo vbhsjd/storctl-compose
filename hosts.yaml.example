@@ -1,0 +1,5 @@
+hosts:
+  - name: node-57-122
+    ip: 192.0.2.11
+    user: root
+    password: "replace-me"

@@ -9,8 +9,11 @@ No Ansible, sshpass, Python, or hand-written storage NIC names are required.
 ```bash
 unzip storctl-compose-*.zip
 cd storctl-compose-*
-cp hosts.yaml.example hosts.yaml
 mkdir -p drivers reports
+cp hosts.yaml.example hosts.yaml
+cp compose.yaml.example compose.yaml
+cp storctl-profiles.example.json storctl-profiles.json
+cp storctl-artifacts.example.json drivers/storctl-artifacts.json
 ```
 
 Edit:

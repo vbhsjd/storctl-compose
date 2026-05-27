@@ -24,6 +24,8 @@ storctl-compose.sha256
 storctl-linux-arm64
 storctl-linux-arm64.sha256
 hosts.yaml.example
+compose.yaml.example
+storctl-profiles.example.json
 compose.yaml
 storctl-profiles.json
 storctl-artifacts.example.json
@@ -40,8 +42,11 @@ examples/
 ```bash
 unzip storctl-compose-*.zip
 cd storctl-compose-*
-cp hosts.yaml.example hosts.yaml
 mkdir -p drivers reports
+cp hosts.yaml.example hosts.yaml
+cp compose.yaml.example compose.yaml
+cp storctl-profiles.example.json storctl-profiles.json
+cp storctl-artifacts.example.json drivers/storctl-artifacts.json
 ```
 
 后面只需要改三个文件：
@@ -56,6 +61,7 @@ storctl-profiles.json
 
 ```text
 drivers/
+  storctl-artifacts.json
 ```
 
 ## 2. 填 hosts.yaml
@@ -191,7 +197,7 @@ drivers/
   SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 ```
 
-复制 artifact 模板：
+如果前面还没复制 artifact 模板，先复制：
 
 ```bash
 cp storctl-artifacts.example.json drivers/storctl-artifacts.json
