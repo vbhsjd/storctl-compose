@@ -29,3 +29,5 @@
   failure counters.
 - Hilink probing now falls back from `hinicX` device names to Linux NIC names
   such as `eth3`, matching field behavior on some 1823 hosts.
+- Release bundle now embeds `storctl` with stale VLAN parent repair and VLAN
+  MTU rebuild handling.
