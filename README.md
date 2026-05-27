@@ -272,13 +272,25 @@ OK node-57-122 check checked
 ./storctl-compose report
 ```
 
-默认汇总只看核心列：
+默认只看当前 `hosts.csv` 里的机器，旧清单留下的 `reports/` 记录会被忽略。输出列是：
 
 ```text
-hosts success fail degraded driver_not_ready no_candidate no_link_ready reboot_required
+ip command status code protocol message
 ```
 
-如果有 `degraded`，说明 TCP fallback 成功了，但 RDMA 没成功，后续还要排查 RDMA。机器可读汇总用：
+如果有旧记录被忽略，会看到：
+
+```text
+ignored_stale_records=7
+```
+
+需要看全部历史记录时：
+
+```bash
+./storctl-compose report --all
+```
+
+机器可读汇总用：
 
 ```bash
 ./storctl-compose report --json
@@ -314,9 +326,21 @@ reports/<host>/nic-probe/<nic>.hilink-count.txt
 
 ## 常见问题
 
-`ssh_failed`：检查 IP、root 密码、端口 22、目标机 SSH 配置。
+`auth_failed`：SSH 认证失败，通常是密码不对、账号不对，或目标机禁用了密码登录。
+
+`ssh_timeout`：SSH 连接超时，检查 IP 是否在线、22 端口、路由和防火墙。
+
+`ssh_refused`：目标机拒绝连接，通常是 sshd 没开或端口不对。
+
+`ssh_unreachable`：网络不可达，先查控制机到目标 IP 的路由。
+
+`connection_lost`：SSH/SFTP 中途断开，可以单台重跑 `copy --limit <ip> --timeout 60m`。
+
+`networkmanager_down`：目标机 NetworkManager 没运行，先在目标机执行 `systemctl enable --now NetworkManager`。
 
 `timeout`：单台机器某个阶段超过超时限制。`copy` 阶段通常是驱动目录太大或链路慢，可以用 `./storctl-compose copy --timeout 60m`。
+
+`mount_failed`：NFS 挂载失败，看 `reports/<host>/attempts/` 里的原始 mount 输出。
 
 `driver_install_failed`：检查 `drivers/storctl-artifacts.json` 的 OS/SP/架构、文件名和 sha256。
 

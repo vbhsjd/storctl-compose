@@ -18,17 +18,16 @@ func TestPrintReportDefaultIsCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "hosts\tsuccess\tfail\tdegraded\tdriver_not_ready\tno_candidate\tno_link_ready\treboot_required") {
+	if !strings.Contains(got, "summary hosts=2 ok=1 fail=1 rdma=1 tcp=1 ignored_stale_records=0") {
 		t.Fatalf("compact header missing:\n%s", got)
 	}
 	if strings.Contains(got, "optical_absent") || strings.Contains(got, "all_candidate_nics_failed") {
 		t.Fatalf("compact report leaked verbose fields:\n%s", got)
 	}
-	if !strings.Contains(got, "failures:\nnode-b\tapply\tno_link_ready_nic\tno 1823 NIC has ready optical/module/link state") {
-		t.Fatalf("failure list missing:\n%s", got)
-	}
-	if !strings.Contains(got, "successes:\nnode-a\tapply\tdegraded\t") {
-		t.Fatalf("success list missing:\n%s", got)
+	if !strings.Contains(got, "ip\tcommand\tstatus\tcode\tprotocol\tmessage") ||
+		!strings.Contains(got, "\tapply\tFAIL\tno_link_ready_nic\trdma\tno 1823 NIC has ready optical/module/link state") ||
+		!strings.Contains(got, "\tapply\tOK\tok\ttcp\t") {
+		t.Fatalf("rows missing:\n%s", got)
 	}
 }
 
@@ -62,14 +61,14 @@ func TestPrintReportVerboseKeepsDetailedColumns(t *testing.T) {
 func TestWriteReportCSVIncludesAllHosts(t *testing.T) {
 	dir := writeReportFixtures(t)
 	var out bytes.Buffer
-	if err := WriteReportCSV(dir, &out); err != nil {
+	if err := WriteReportCSV(dir, &out, ReportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	got := out.String()
 	if !strings.Contains(got, "ip,command,status,code,message,protocol") {
 		t.Fatalf("csv header missing:\n%s", got)
 	}
-	if !strings.Contains(got, ",apply,OK,ok,,tcp") {
+	if !strings.Contains(got, ",apply,OK,ok,ok,tcp") {
 		t.Fatalf("success row missing:\n%s", got)
 	}
 	if !strings.Contains(got, ",apply,FAIL,no_link_ready_nic,no 1823 NIC has ready optical/module/link state,rdma") {
@@ -80,7 +79,7 @@ func TestWriteReportCSVIncludesAllHosts(t *testing.T) {
 func TestWriteReportXLSXHasFilterWidthsAndProtocolDropdown(t *testing.T) {
 	dir := writeReportFixtures(t)
 	var out bytes.Buffer
-	if err := WriteReportXLSX(dir, &out); err != nil {
+	if err := WriteReportXLSX(dir, &out, ReportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	zr, err := zip.NewReader(bytes.NewReader(out.Bytes()), int64(out.Len()))
@@ -105,6 +104,23 @@ func TestWriteReportXLSXHasFilterWidthsAndProtocolDropdown(t *testing.T) {
 	}
 	if !strings.Contains(data, "autoFilter") || !strings.Contains(data, "dataValidations") || !strings.Contains(data, "rdma,tcp") {
 		t.Fatalf("xlsx missing filter or dropdown")
+	}
+}
+
+func TestLoadReportFiltersCurrentHostsAndAddsMiss(t *testing.T) {
+	dir := writeReportFixtures(t)
+	report, err := LoadReportWithOptions(dir, ReportOptions{Hosts: []Host{
+		{Name: "node-a", IP: "80.5.21.122"},
+		{Name: "node-c", IP: "80.5.21.124"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.Hosts != 2 || report.IgnoredStaleRecords != 1 {
+		t.Fatalf("unexpected summary: %+v", report)
+	}
+	if report.Results[1].Host != "node-c" || report.Results[1].Status != "MISS" || report.Results[1].Code != "not_run" {
+		t.Fatalf("missing host not represented: %+v", report.Results)
 	}
 }
 

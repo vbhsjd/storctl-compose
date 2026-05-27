@@ -32,6 +32,8 @@ func run(args []string) int {
 	case "report":
 		fs := flag.NewFlagSet("report", flag.ContinueOnError)
 		reportDir := fs.String("report-dir", "reports", "report directory")
+		hostsPath := fs.String("hosts", "hosts.csv", "hosts CSV or YAML")
+		allRecords := fs.Bool("all", false, "include all historical report records")
 		jsonOut := fs.Bool("json", false, "print full JSON summary")
 		verbose := fs.Bool("verbose", false, "print detailed human summary")
 		csvPath := fs.String("csv", "", "write all host results to CSV file; use - for stdout")
@@ -39,21 +41,26 @@ func run(args []string) int {
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
 		}
+		reportOpts, err := reportOptions(*hostsPath, *allRecords, *jsonOut, *verbose)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "FAIL args: %v\n", err)
+			return 2
+		}
 		if *xlsxPath != "" {
-			if err := writeXLSXReport(*reportDir, *xlsxPath); err != nil {
+			if err := writeXLSXReport(*reportDir, *xlsxPath, reportOpts); err != nil {
 				fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
 				return 1
 			}
 			return 0
 		}
 		if *csvPath != "" {
-			if err := writeCSVReport(*reportDir, *csvPath); err != nil {
+			if err := writeCSVReport(*reportDir, *csvPath, reportOpts); err != nil {
 				fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
 				return 1
 			}
 			return 0
 		}
-		if err := compose.PrintReport(*reportDir, os.Stdout, compose.ReportOptions{JSON: *jsonOut, Verbose: *verbose}); err != nil {
+		if err := compose.PrintReport(*reportDir, os.Stdout, reportOpts); err != nil {
 			fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
 			return 1
 		}
@@ -67,29 +74,42 @@ func run(args []string) int {
 	}
 }
 
-func writeXLSXReport(reportDir, xlsxPath string) error {
+func reportOptions(hostsPath string, allRecords, jsonOut, verbose bool) (compose.ReportOptions, error) {
+	opts := compose.ReportOptions{All: allRecords, JSON: jsonOut, Verbose: verbose}
+	if allRecords {
+		return opts, nil
+	}
+	hosts, err := compose.LoadReportHosts(hostsPath)
+	if err != nil {
+		return opts, fmt.Errorf("%w; use --all to report historical records without a hosts file", err)
+	}
+	opts.Hosts = hosts.Hosts
+	return opts, nil
+}
+
+func writeXLSXReport(reportDir, xlsxPath string, opts compose.ReportOptions) error {
 	f, err := os.Create(xlsxPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if err := compose.WriteReportXLSX(reportDir, f); err != nil {
+	if err := compose.WriteReportXLSX(reportDir, f, opts); err != nil {
 		return err
 	}
 	fmt.Printf("OK report xlsx %s\n", xlsxPath)
 	return nil
 }
 
-func writeCSVReport(reportDir, csvPath string) error {
+func writeCSVReport(reportDir, csvPath string, opts compose.ReportOptions) error {
 	if csvPath == "-" {
-		return compose.WriteReportCSV(reportDir, os.Stdout)
+		return compose.WriteReportCSV(reportDir, os.Stdout, opts)
 	}
 	f, err := os.Create(csvPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if err := compose.WriteReportCSV(reportDir, f); err != nil {
+	if err := compose.WriteReportCSV(reportDir, f, opts); err != nil {
 		return err
 	}
 	fmt.Printf("OK report csv %s\n", csvPath)
@@ -173,7 +193,7 @@ usage:
   storctl-compose install-driver [--upgrade-firmware]
   storctl-compose apply
   storctl-compose check
-  storctl-compose report [--json|--verbose|--csv result.csv|--xlsx result.xlsx]
+  storctl-compose report [--all|--json|--verbose|--csv result.csv|--xlsx result.xlsx]
   storctl-compose version [--json]
 
 notes:

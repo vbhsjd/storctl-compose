@@ -27,6 +27,8 @@
   a filter row, wider columns, and `protocol` values of `rdma` or `tcp`.
 - `hosts.csv` as the default host input format: `ip,password,user`, with
   `user` defaulting to `root`.
+- `storctl-compose report --all` for viewing historical records outside the
+  current hosts file.
 
 ### Changed
 
@@ -47,3 +49,10 @@
 - Compact report output now includes a success list as well as failures.
 - Report CSV output is now intentionally small: `ip,command,status,code,message,protocol`.
 - Non-root SSH users are allowed when the target has passwordless sudo.
+- Default report output now filters by current `hosts.csv`, shows `MISS/not_run`
+  for hosts without results, and reports ignored stale records.
+- Batch command output now uses short per-host lines plus grouped failure
+  summaries.
+- Common SSH, NetworkManager, and NFS mount failures are normalized to stable
+  codes such as `auth_failed`, `ssh_timeout`, `networkmanager_down`, and
+  `mount_failed`.

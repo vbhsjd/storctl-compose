@@ -37,18 +37,21 @@ type ReportFailure struct {
 }
 
 type ReportData struct {
-	Summary  ReportSummary   `json:"summary"`
-	Failures []ReportFailure `json:"failures"`
-	Results  []HostResult    `json:"results"`
+	Summary             ReportSummary   `json:"summary"`
+	Failures            []ReportFailure `json:"failures"`
+	Results             []HostResult    `json:"results"`
+	IgnoredStaleRecords int             `json:"ignored_stale_records,omitempty"`
 }
 
 type ReportOptions struct {
 	JSON    bool
 	Verbose bool
+	Hosts   []Host
+	All     bool
 }
 
 func PrintReport(reportDir string, out io.Writer, opts ReportOptions) error {
-	data, err := LoadReport(reportDir)
+	data, err := LoadReportWithOptions(reportDir, opts)
 	if err != nil {
 		return err
 	}
@@ -66,8 +69,12 @@ func PrintReport(reportDir string, out io.Writer, opts ReportOptions) error {
 }
 
 func LoadReport(reportDir string) (ReportData, error) {
+	return LoadReportWithOptions(reportDir, ReportOptions{All: true})
+}
+
+func LoadReportWithOptions(reportDir string, opts ReportOptions) (ReportData, error) {
 	var report ReportData
-	var summary ReportSummary
+	allResults := []HostResult{}
 	err := filepath.WalkDir(reportDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -83,20 +90,80 @@ func LoadReport(reportDir string) (ReportData, error) {
 		if err := json.Unmarshal(data, &result); err != nil {
 			return err
 		}
-		report.Results = append(report.Results, result)
+		allResults = append(allResults, result)
+		return nil
+	})
+	if err != nil {
+		return report, err
+	}
+	report.Results, report.IgnoredStaleRecords = filterReportResults(allResults, opts)
+	sort.Slice(report.Results, func(i, j int) bool { return report.Results[i].Host < report.Results[j].Host })
+	report.Summary, report.Failures = summarizeReport(report.Results)
+	return report, nil
+}
+
+func filterReportResults(all []HostResult, opts ReportOptions) ([]HostResult, int) {
+	if opts.All || len(opts.Hosts) == 0 {
+		return all, 0
+	}
+	byHost := map[string]int{}
+	byIP := map[string]int{}
+	for i, result := range all {
+		if result.Host != "" {
+			byHost[result.Host] = i
+		}
+		if result.IP != "" {
+			byIP[result.IP] = i
+		}
+	}
+	selected := []HostResult{}
+	used := map[int]bool{}
+	for _, host := range opts.Hosts {
+		idx, ok := byHost[host.Name]
+		if !ok {
+			idx, ok = byIP[host.IP]
+		}
+		if ok {
+			result := all[idx]
+			if result.IP == "" {
+				result.IP = host.IP
+			}
+			if result.Host == "" {
+				result.Host = host.Name
+			}
+			selected = append(selected, result)
+			used[idx] = true
+			continue
+		}
+		selected = append(selected, HostResult{
+			Host:    host.Name,
+			IP:      host.IP,
+			Command: "",
+			Status:  "MISS",
+			Code:    "not_run",
+			Message: "not run",
+		})
+	}
+	return selected, len(all) - len(used)
+}
+
+func summarizeReport(results []HostResult) (ReportSummary, []ReportFailure) {
+	var summary ReportSummary
+	failures := []ReportFailure{}
+	for _, result := range results {
 		summary.Hosts++
 		if result.Status == "OK" {
 			summary.Success++
 		} else {
 			summary.Failures++
-			report.Failures = append(report.Failures, ReportFailure{
+			failures = append(failures, ReportFailure{
 				Host:    result.Host,
 				Command: result.Command,
 				Code:    result.Code,
-				Message: trimReportMessage(result.Message),
+				Message: displayMessage(result),
 			})
 		}
-		if result.Degraded || strings.Contains(result.Message, "tcp_fallback_degraded") {
+		if reportProtocol(result) == "tcp" {
 			summary.DegradedTCP++
 		}
 		switch result.Code {
@@ -125,44 +192,20 @@ func LoadReport(reportDir string) (ReportData, error) {
 		if result.RebootRequired {
 			summary.RebootRequired++
 		}
-		return nil
-	})
-	if err != nil {
-		return report, err
 	}
-	sort.Slice(report.Results, func(i, j int) bool { return report.Results[i].Host < report.Results[j].Host })
-	sort.Slice(report.Failures, func(i, j int) bool { return report.Failures[i].Host < report.Failures[j].Host })
-	report.Summary = summary
-	return report, nil
+	sort.Slice(failures, func(i, j int) bool { return failures[i].Host < failures[j].Host })
+	return summary, failures
 }
 
 func printDefaultReport(out io.Writer, report ReportData) {
 	summary := report.Summary
-	fmt.Fprintln(out, "hosts\tsuccess\tfail\tdegraded\tdriver_not_ready\tno_candidate\tno_link_ready\treboot_required")
-	fmt.Fprintf(out, "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-		summary.Hosts, summary.Success, summary.Failures, summary.DegradedTCP,
-		summary.DriverNotReady, summary.NoCandidateNIC, summary.NoLinkReadyNIC,
-		summary.RebootRequired)
-	if len(report.Failures) > 0 {
-		fmt.Fprintln(out, "")
-		fmt.Fprintln(out, "failures:")
-		for _, failure := range report.Failures {
-			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", failure.Host, failure.Command, failure.Code, failure.Message)
-		}
-	}
-	if summary.Success > 0 {
-		fmt.Fprintln(out, "")
-		fmt.Fprintln(out, "successes:")
-		for _, result := range report.Results {
-			if result.Status != "OK" {
-				continue
-			}
-			code := "ok"
-			if result.Degraded {
-				code = "degraded"
-			}
-			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", result.Host, result.Command, code, successMessage(result))
-		}
+	rdma, tcp := protocolCounts(report.Results)
+	fmt.Fprintf(out, "summary hosts=%d ok=%d fail=%d rdma=%d tcp=%d ignored_stale_records=%d\n\n",
+		summary.Hosts, summary.Success, summary.Failures, rdma, tcp, report.IgnoredStaleRecords)
+	fmt.Fprintln(out, "ip\tcommand\tstatus\tcode\tprotocol\tmessage")
+	for _, result := range report.Results {
+		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			result.IP, result.Command, result.Status, reportCode(result), reportProtocol(result), displayMessage(result))
 	}
 }
 
@@ -189,11 +232,26 @@ func successMessage(result HostResult) string {
 	if result.SelectedNIC != "" {
 		return "selected-nic " + result.SelectedNIC
 	}
-	return trimReportMessage(result.Message)
+	lower := strings.ToLower(result.Message)
+	switch {
+	case strings.Contains(lower, "already mounted"):
+		return "already_mounted"
+	case strings.Contains(lower, "driver installed"):
+		return "driver_installed"
+	case strings.Contains(lower, "checked"):
+		return "checked"
+	case strings.Contains(lower, "copied"):
+		return "copied"
+	}
+	msg := trimReportMessage(result.Message)
+	if msg == "" {
+		return "ok"
+	}
+	return msg
 }
 
-func WriteReportCSV(reportDir string, out io.Writer) error {
-	report, err := LoadReport(reportDir)
+func WriteReportCSV(reportDir string, out io.Writer, opts ReportOptions) error {
+	report, err := LoadReportWithOptions(reportDir, opts)
 	if err != nil {
 		return err
 	}
@@ -214,7 +272,7 @@ func WriteReportCSV(reportDir string, out io.Writer) error {
 			result.Command,
 			result.Status,
 			reportCode(result),
-			reportMessage(result),
+			displayMessage(result),
 			reportProtocol(result),
 		}); err != nil {
 			return err
@@ -224,8 +282,8 @@ func WriteReportCSV(reportDir string, out io.Writer) error {
 	return w.Error()
 }
 
-func WriteReportXLSX(reportDir string, out io.Writer) error {
-	report, err := LoadReport(reportDir)
+func WriteReportXLSX(reportDir string, out io.Writer, opts ReportOptions) error {
+	report, err := LoadReportWithOptions(reportDir, opts)
 	if err != nil {
 		return err
 	}
@@ -236,7 +294,7 @@ func WriteReportXLSX(reportDir string, out io.Writer) error {
 			result.Command,
 			result.Status,
 			reportCode(result),
-			reportMessage(result),
+			displayMessage(result),
 			reportProtocol(result),
 		})
 	}
@@ -266,17 +324,42 @@ func WriteReportXLSX(reportDir string, out io.Writer) error {
 }
 
 func reportCode(result HostResult) string {
+	if result.Status == "MISS" && result.Code == "" {
+		return "not_run"
+	}
 	if result.Status == "OK" && result.Code == "" {
 		return "ok"
 	}
 	return result.Code
 }
 
-func reportMessage(result HostResult) string {
+func displayMessage(result HostResult) string {
 	if result.Status == "OK" {
 		return successMessage(result)
 	}
-	return trimReportMessage(result.Message)
+	switch reportCode(result) {
+	case "auth_failed":
+		return "ssh auth failed"
+	case "ssh_timeout":
+		return "ssh connect timed out"
+	case "ssh_refused":
+		return "ssh connection refused"
+	case "ssh_unreachable":
+		return "ssh network unreachable"
+	case "connection_lost":
+		return "connection lost"
+	case "networkmanager_down":
+		return "NetworkManager is not running"
+	case "mount_failed":
+		return "nfs mount failed"
+	case "not_run":
+		return "not run"
+	}
+	msg := trimReportMessage(result.Message)
+	if msg == "" {
+		return reportCode(result)
+	}
+	return msg
 }
 
 func reportProtocol(result HostResult) string {
@@ -284,6 +367,18 @@ func reportProtocol(result HostResult) string {
 		return "tcp"
 	}
 	return "rdma"
+}
+
+func protocolCounts(results []HostResult) (rdma int, tcp int) {
+	for _, result := range results {
+		switch reportProtocol(result) {
+		case "tcp":
+			tcp++
+		default:
+			rdma++
+		}
+	}
+	return rdma, tcp
 }
 
 func sheetXML(rows [][]string) string {

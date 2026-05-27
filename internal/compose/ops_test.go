@@ -431,6 +431,23 @@ func TestCommandTimeoutReturnsTimeoutCode(t *testing.T) {
 	}
 }
 
+func TestNormalizeFailureCode(t *testing.T) {
+	cases := map[string]string{
+		"ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password], no supported methods remain": "auth_failed",
+		"dial tcp 1.1.1.1:22: connect: connection timed out":                                                                 "ssh_timeout",
+		"dial tcp 1.1.1.1:22: connect: connection refused":                                                                   "ssh_refused",
+		"dial tcp 1.1.1.1:22: connect: network is unreachable":                                                               "ssh_unreachable",
+		"connection lost":                       "connection_lost",
+		"Error: NetworkManager is not running.": "networkmanager_down",
+		"mount -t nfs server:/Share /mnt/share: exit status 32: mount.nfs: Protocol error": "mount_failed",
+	}
+	for msg, want := range cases {
+		if got := normalizeFailureCode("ssh_failed", msg); got != want {
+			t.Fatalf("normalizeFailureCode(%q)=%q, want %q", msg, got, want)
+		}
+	}
+}
+
 func setupTwoCandidateRemote(r *fakeRemote) {
 	r.outputs["ls -1 /sys/class/net"] = CommandResult{Stdout: "enp23s0f0\nenp23s0f1\n"}
 	for _, name := range []string{"enp23s0f0", "enp23s0f1"} {

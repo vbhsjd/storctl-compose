@@ -60,6 +60,7 @@ Useful flags:
 ./storctl-compose copy --timeout 60m
 ./storctl-compose report --json
 ./storctl-compose report --verbose
+./storctl-compose report --all
 ./storctl-compose report --csv result.csv
 ./storctl-compose report --xlsx result.xlsx
 ./storctl-compose install-driver --upgrade-firmware
@@ -68,6 +69,7 @@ Useful flags:
 
 `--csv result.csv` writes every host with only `ip,command,status,code,message,protocol`.
 Use `--xlsx result.xlsx` for an Excel file with a filter row, wider columns, and `protocol` values of `rdma` or `tcp`.
+By default, reports only include hosts from the current `hosts.csv`; use `--all` to include historical records left under `reports/`.
 
 ## Release Package
 

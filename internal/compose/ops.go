@@ -190,6 +190,7 @@ func (a *App) runHosts(ctx context.Context, hosts []Host, cfg Config, opts Optio
 		_ = writeHostResult(opts.ReportDir, result)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Host < out[j].Host })
+	a.printBatchSummary(out)
 	return out
 }
 
@@ -198,14 +199,44 @@ func (a *App) printResult(result HostResult) {
 	if result.Status != "OK" {
 		prefix = "FAIL"
 	}
-	msg := result.Message
-	if result.SelectedNIC != "" {
-		msg = "selected-nic " + result.SelectedNIC
-	}
 	if result.RebootRequired {
-		msg += " REBOOT_REQUIRED"
+		fmt.Fprintf(a.Out, "%-4s %s %s protocol=%s %s REBOOT_REQUIRED\n",
+			prefix, result.IP, result.Command, reportProtocol(result), displayMessage(result))
+		return
 	}
-	fmt.Fprintf(a.Out, "%s %s %s %s\n", prefix, result.Host, result.Command, msg)
+	fmt.Fprintf(a.Out, "%-4s %s %s protocol=%s %s\n",
+		prefix, result.IP, result.Command, reportProtocol(result), displayMessage(result))
+}
+
+func (a *App) printBatchSummary(results []HostResult) {
+	ok := 0
+	fail := 0
+	rdma, tcp := protocolCounts(results)
+	failures := map[string][]string{}
+	for _, result := range results {
+		if result.Status == "OK" {
+			ok++
+			continue
+		}
+		fail++
+		code := reportCode(result)
+		failures[code] = append(failures[code], result.IP)
+	}
+	fmt.Fprintf(a.Out, "\nsummary hosts=%d ok=%d fail=%d rdma=%d tcp=%d\n", len(results), ok, fail, rdma, tcp)
+	if len(failures) == 0 {
+		return
+	}
+	fmt.Fprintln(a.Out, "\nfailures:")
+	codes := make([]string, 0, len(failures))
+	for code := range failures {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	for _, code := range codes {
+		ips := failures[code]
+		sort.Strings(ips)
+		fmt.Fprintf(a.Out, "%s %d %s\n", code, len(ips), strings.Join(ips, ","))
+	}
 }
 
 func isTimeout(ctx context.Context, err error) bool {
@@ -642,10 +673,31 @@ func finishOK(result HostResult, msg string) HostResult {
 
 func finishFail(result HostResult, code, msg string) HostResult {
 	result.Status = "FAIL"
-	result.Code = code
+	result.Code = normalizeFailureCode(code, msg)
 	result.Message = trimMessage(msg)
 	result.FinishedAt = nowString()
 	return result
+}
+
+func normalizeFailureCode(code, msg string) string {
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "unable to authenticate"):
+		return "auth_failed"
+	case strings.Contains(lower, "connect: connection timed out"):
+		return "ssh_timeout"
+	case strings.Contains(lower, "connection refused"):
+		return "ssh_refused"
+	case strings.Contains(lower, "network is unreachable") || strings.Contains(lower, "no route to host"):
+		return "ssh_unreachable"
+	case strings.Contains(lower, "connection lost") || strings.Contains(lower, "connection reset") || strings.Contains(lower, "broken pipe"):
+		return "connection_lost"
+	case strings.Contains(lower, "networkmanager is not running"):
+		return "networkmanager_down"
+	case strings.Contains(lower, "mount.nfs") || strings.Contains(lower, "fail rdma mount") || (strings.Contains(lower, "nfs") && strings.Contains(lower, "exit status 32")):
+		return "mount_failed"
+	}
+	return code
 }
 
 func trimMessage(msg string) string {

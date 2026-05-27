@@ -13,21 +13,42 @@ import (
 func LoadInputs(hostsPath, configPath string) (HostsFile, Config, error) {
 	var hosts HostsFile
 	cfg := Config{AllowTCPFallback: true}
-	resolvedHostsPath := resolveHostsPath(hostsPath)
-	if err := readHosts(resolvedHostsPath, &hosts); err != nil {
+	hosts, err := LoadHosts(hostsPath)
+	if err != nil {
 		return hosts, cfg, err
 	}
 	if err := readYAML(configPath, &cfg); err != nil {
 		return hosts, cfg, err
 	}
 	applyConfigDefaults(&cfg)
-	if err := validateHosts(hosts); err != nil {
-		return hosts, cfg, err
-	}
 	if err := validateConfig(cfg); err != nil {
 		return hosts, cfg, err
 	}
 	return hosts, cfg, nil
+}
+
+func LoadHosts(hostsPath string) (HostsFile, error) {
+	var hosts HostsFile
+	resolvedHostsPath := resolveHostsPath(hostsPath)
+	if err := readHosts(resolvedHostsPath, &hosts); err != nil {
+		return hosts, err
+	}
+	if err := validateHosts(hosts); err != nil {
+		return hosts, err
+	}
+	return hosts, nil
+}
+
+func LoadReportHosts(hostsPath string) (HostsFile, error) {
+	var hosts HostsFile
+	resolvedHostsPath := resolveHostsPath(hostsPath)
+	if err := readHosts(resolvedHostsPath, &hosts); err != nil {
+		return hosts, err
+	}
+	if err := normalizeReportHosts(&hosts); err != nil {
+		return hosts, err
+	}
+	return hosts, nil
 }
 
 func resolveHostsPath(path string) string {
@@ -40,6 +61,30 @@ func resolveHostsPath(path string) string {
 		}
 	}
 	return path
+}
+
+func normalizeReportHosts(hosts *HostsFile) error {
+	if len(hosts.Hosts) == 0 {
+		return fmt.Errorf("hosts file must contain at least one host")
+	}
+	seen := map[string]bool{}
+	for i, host := range hosts.Hosts {
+		if strings.TrimSpace(host.Name) == "" {
+			host.Name = host.IP
+		}
+		if strings.TrimSpace(host.User) == "" {
+			host.User = "root"
+		}
+		hosts.Hosts[i] = host
+		if strings.TrimSpace(host.Name) == "" || strings.TrimSpace(host.IP) == "" {
+			return fmt.Errorf("hosts[%d] requires ip", i)
+		}
+		if seen[host.Name] {
+			return fmt.Errorf("duplicate host name %s", host.Name)
+		}
+		seen[host.Name] = true
+	}
+	return nil
 }
 
 func readHosts(path string, hosts *HostsFile) error {
