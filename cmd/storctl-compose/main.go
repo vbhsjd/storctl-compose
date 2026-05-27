@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"storctl-compose/internal/compose"
 )
@@ -31,10 +32,12 @@ func run(args []string) int {
 	case "report":
 		fs := flag.NewFlagSet("report", flag.ContinueOnError)
 		reportDir := fs.String("report-dir", "reports", "report directory")
+		jsonOut := fs.Bool("json", false, "print full JSON summary")
+		verbose := fs.Bool("verbose", false, "print detailed human summary")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
 		}
-		if err := compose.PrintReport(*reportDir, os.Stdout); err != nil {
+		if err := compose.PrintReport(*reportDir, os.Stdout, compose.ReportOptions{JSON: *jsonOut, Verbose: *verbose}); err != nil {
 			fmt.Fprintf(os.Stderr, "FAIL report: %v\n", err)
 			return 1
 		}
@@ -56,9 +59,16 @@ func runWorkflow(command string, args []string) int {
 	fs.StringVar(&opts.Limit, "limit", "", "comma-separated host names or IPs")
 	fs.IntVar(&opts.Concurrency, "concurrency", compose.DefaultConcurrency, "parallel hosts, max 50")
 	fs.BoolVar(&opts.UpgradeFirmware, "upgrade-firmware", false, "install-driver only: upgrade firmware")
+	timeoutRaw := fs.String("timeout", compose.DefaultTimeout.String(), "per-host timeout, for example 30s, 5m, 1h")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	timeout, err := parseTimeout(*timeoutRaw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL args: %v\n", err)
+		return 2
+	}
+	opts.Timeout = timeout
 	hosts, cfg, err := compose.LoadInputs(opts.HostsPath, opts.ConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FAIL args: %v\n", err)
@@ -84,6 +94,17 @@ func runWorkflow(command string, args []string) int {
 	return 0
 }
 
+func parseTimeout(raw string) (time.Duration, error) {
+	timeout, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid --timeout %q: %w", raw, err)
+	}
+	if timeout <= 0 {
+		return 0, fmt.Errorf("--timeout must be greater than 0")
+	}
+	return timeout, nil
+}
+
 func runVersion(args []string) int {
 	fs := flag.NewFlagSet("version", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "print JSON")
@@ -107,11 +128,12 @@ usage:
   storctl-compose install-driver [--upgrade-firmware]
   storctl-compose apply
   storctl-compose check
-  storctl-compose report
+  storctl-compose report [--json|--verbose]
   storctl-compose version [--json]
 
 notes:
   - defaults: --hosts hosts.yaml --config compose.yaml --report-dir reports
+  - copy/install-driver/apply/check default to --timeout 30m per host
   - only 1823 is supported in storctl-compose
   - target hosts must allow root SSH login
   - drivers stay in the external artifact_src directory`)

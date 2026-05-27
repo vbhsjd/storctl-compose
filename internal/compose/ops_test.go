@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeDialer struct {
@@ -23,15 +24,20 @@ func (d fakeDialer) Dial(ctx context.Context, host Host) (Remote, error) {
 }
 
 type fakeRemote struct {
-	outputs map[string]CommandResult
-	errs    map[string]error
-	runs    []string
-	uploads map[string][]byte
+	outputs     map[string]CommandResult
+	errs        map[string]error
+	runs        []string
+	uploads     map[string][]byte
+	blockRun    map[string]bool
+	blockUpload bool
 }
 
 func (r *fakeRemote) Run(ctx context.Context, command string) (CommandResult, error) {
-	_ = ctx
 	r.runs = append(r.runs, command)
+	if r.blockRun[command] {
+		<-ctx.Done()
+		return CommandResult{ExitCode: 124}, ctx.Err()
+	}
 	if out, ok := r.outputs[command]; ok {
 		return out, r.errs[command]
 	}
@@ -39,8 +45,11 @@ func (r *fakeRemote) Run(ctx context.Context, command string) (CommandResult, er
 }
 
 func (r *fakeRemote) UploadBytes(ctx context.Context, remotePath string, data []byte, mode os.FileMode) error {
-	_ = ctx
 	_ = mode
+	if r.blockUpload {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	if r.uploads == nil {
 		r.uploads = map[string][]byte{}
 	}
@@ -355,6 +364,38 @@ func TestCopyUploadsStorctlProfileAndArtifacts(t *testing.T) {
 	}
 	if string(r.uploads["/usr/local/bin/storctl"]) != "storctl-bin" || string(r.uploads["/etc/storctl/profiles.json"]) != "{}" {
 		t.Fatalf("uploads missing: %+v", r.uploads)
+	}
+}
+
+func TestCopyTimeoutReturnsTimeoutCode(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(dir)
+	storctl := filepath.Join(dir, "storctl")
+	profile := filepath.Join(dir, "profiles.json")
+	drivers := filepath.Join(dir, "drivers")
+	_ = os.WriteFile(storctl, []byte("storctl-bin"), 0755)
+	_ = os.WriteFile(profile, []byte("{}"), 0644)
+	_ = os.MkdirAll(drivers, 0755)
+	_ = os.WriteFile(filepath.Join(drivers, "storctl-artifacts.json"), []byte("{}"), 0644)
+	cfg.StorctlBin = storctl
+	cfg.ProfileFile = profile
+	cfg.ArtifactSrc = drivers
+	r := &fakeRemote{blockUpload: true}
+	app := &App{Dialer: fakeDialer{remotes: map[string]*fakeRemote{"node": r}}, Out: os.Stdout}
+	results := app.Copy(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "1.1.1.1", User: "root", Password: "x"}}}, cfg, Options{ReportDir: dir, Concurrency: 1, Timeout: 5 * time.Millisecond})
+	if len(results) != 1 || results[0].Code != "timeout" {
+		t.Fatalf("unexpected result: %+v", results)
+	}
+}
+
+func TestCommandTimeoutReturnsTimeoutCode(t *testing.T) {
+	dir := t.TempDir()
+	cmd := "'/usr/local/bin/storctl' install-driver --nic-type 1823 --artifact-dir '/root/storage_pkgs'"
+	r := &fakeRemote{blockRun: map[string]bool{cmd: true}}
+	app := &App{Dialer: fakeDialer{remotes: map[string]*fakeRemote{"node": r}}, Out: os.Stdout}
+	results := app.InstallDriver(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}}}, testConfig(dir), Options{ReportDir: dir, Concurrency: 1, Timeout: 5 * time.Millisecond})
+	if len(results) != 1 || results[0].Code != "timeout" {
+		t.Fatalf("unexpected result: %+v", results)
 	}
 }
 

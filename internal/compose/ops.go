@@ -3,6 +3,7 @@ package compose
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"storctl-compose/internal/assets"
 )
@@ -147,13 +149,23 @@ func (a *App) runHosts(ctx context.Context, hosts []Host, cfg Config, opts Optio
 		go func() {
 			for host := range jobs {
 				result := startResult(host, command)
-				remote, err := a.Dialer.Dial(ctx, host)
+				hostCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
+				remote, err := a.Dialer.Dial(hostCtx, host)
 				if err != nil {
-					results <- finishFail(result, "ssh_failed", err.Error())
+					if isTimeout(hostCtx, err) {
+						results <- finishTimeout(result, opts.Timeout)
+					} else {
+						results <- finishFail(result, "ssh_failed", err.Error())
+					}
+					cancel()
 					continue
 				}
-				result = fn(ctx, host, remote)
+				result = fn(hostCtx, host, remote)
 				_ = remote.Close()
+				if result.Status != "OK" && isTimeout(hostCtx, nil) {
+					result = finishTimeout(result, opts.Timeout)
+				}
+				cancel()
 				results <- result
 			}
 		}()
@@ -188,6 +200,14 @@ func (a *App) printResult(result HostResult) {
 		msg += " REBOOT_REQUIRED"
 	}
 	fmt.Fprintf(a.Out, "%s %s %s %s\n", prefix, result.Host, result.Command, msg)
+}
+
+func isTimeout(ctx context.Context, err error) bool {
+	return errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func finishTimeout(result HostResult, timeout time.Duration) HostResult {
+	return finishFail(result, "timeout", "timeout after "+timeout.String())
 }
 
 func loadStorctlBytes(cfg Config) ([]byte, error) {

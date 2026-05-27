@@ -230,7 +230,7 @@ sha256sum drivers/SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 先挑一台机器试跑：
 
 ```bash
-./storctl-compose copy --limit node-57-122
+./storctl-compose copy --limit node-57-122 --timeout 60m
 ./storctl-compose install-driver --limit node-57-122
 ```
 
@@ -258,6 +258,13 @@ sha256sum drivers/SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 
 ```bash
 ./storctl-compose install-driver --upgrade-firmware
+```
+
+驱动目录很大、内网慢、`copy` 看起来卡住时，可以临时调大单机超时：
+
+```bash
+./storctl-compose copy --timeout 60m
+./storctl-compose apply --timeout 30m
 ```
 
 默认并发 30，最大 50：
@@ -289,7 +296,18 @@ OK node-57-122 check checked
 ./storctl-compose report
 ```
 
-如果有 `degraded_tcp`，说明 TCP fallback 成功了，但 RDMA 没成功，后续还要排查 RDMA。
+默认汇总只看核心列：
+
+```text
+hosts success fail degraded driver_not_ready no_candidate no_link_ready reboot_required
+```
+
+如果有 `degraded`，说明 TCP fallback 成功了，但 RDMA 没成功，后续还要排查 RDMA。机器可读汇总用：
+
+```bash
+./storctl-compose report --json
+./storctl-compose report --verbose
+```
 
 失败尝试日志在：
 
@@ -305,6 +323,8 @@ reports/<host>/nic-probe/<nic>.hilink-count.txt
 ## 常见问题
 
 `ssh_failed`：检查 IP、root 密码、端口 22、目标机 SSH 配置。
+
+`timeout`：单台机器某个阶段超过超时限制。`copy` 阶段通常是驱动目录太大或链路慢，可以用 `./storctl-compose copy --timeout 60m`。
 
 `driver_install_failed`：检查 `drivers/storctl-artifacts.json` 的 OS/SP/架构、文件名和 sha256。
 

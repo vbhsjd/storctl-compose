@@ -67,4 +67,7 @@ func TestNormalizeOptionsClampsConcurrency(t *testing.T) {
 	if opts.Concurrency != DefaultConcurrency {
 		t.Fatalf("Concurrency=%d", opts.Concurrency)
 	}
+	if opts.Timeout != DefaultTimeout {
+		t.Fatalf("Timeout=%s", opts.Timeout)
+	}
 }

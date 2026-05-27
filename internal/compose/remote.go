@@ -104,6 +104,7 @@ func (r *SSHRemote) Run(ctx context.Context, command string) (CommandResult, err
 	select {
 	case <-ctx.Done():
 		_ = session.Signal(ssh.SIGKILL)
+		_ = r.Close()
 		return CommandResult{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: 124}, ctx.Err()
 	case err := <-done:
 		code := 0
@@ -118,53 +119,69 @@ func (r *SSHRemote) Run(ctx context.Context, command string) (CommandResult, err
 }
 
 func (r *SSHRemote) MkdirAll(ctx context.Context, remotePath string, mode os.FileMode) error {
-	_ = ctx
-	if err := r.sftp.MkdirAll(remotePath); err != nil {
-		return err
-	}
-	return r.sftp.Chmod(remotePath, mode)
+	return r.withContext(ctx, func() error {
+		if err := r.sftp.MkdirAll(remotePath); err != nil {
+			return err
+		}
+		return r.sftp.Chmod(remotePath, mode)
+	})
 }
 
 func (r *SSHRemote) UploadBytes(ctx context.Context, remotePath string, data []byte, mode os.FileMode) error {
-	_ = ctx
-	if err := r.sftp.MkdirAll(path.Dir(remotePath)); err != nil {
-		return err
-	}
-	f, err := r.sftp.OpenFile(remotePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return r.sftp.Chmod(remotePath, mode)
+	return r.withContext(ctx, func() error {
+		if err := r.sftp.MkdirAll(path.Dir(remotePath)); err != nil {
+			return err
+		}
+		f, err := r.sftp.OpenFile(remotePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(data); err != nil {
+			_ = f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+		return r.sftp.Chmod(remotePath, mode)
+	})
 }
 
 func (r *SSHRemote) UploadFile(ctx context.Context, localPath, remotePath string, mode os.FileMode) error {
-	data, err := os.Open(localPath)
-	if err != nil {
+	return r.withContext(ctx, func() error {
+		data, err := os.Open(localPath)
+		if err != nil {
+			return err
+		}
+		defer data.Close()
+		if err := r.sftp.MkdirAll(path.Dir(remotePath)); err != nil {
+			return err
+		}
+		f, err := r.sftp.OpenFile(remotePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(f, data); err != nil {
+			_ = f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+		return r.sftp.Chmod(remotePath, mode)
+	})
+}
+
+func (r *SSHRemote) withContext(ctx context.Context, fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case <-ctx.Done():
+		_ = r.Close()
+		return ctx.Err()
+	case err := <-done:
 		return err
 	}
-	defer data.Close()
-	if err := r.sftp.MkdirAll(path.Dir(remotePath)); err != nil {
-		return err
-	}
-	f, err := r.sftp.OpenFile(remotePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(f, data); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return r.sftp.Chmod(remotePath, mode)
 }
 
 func (r *SSHRemote) Close() error {

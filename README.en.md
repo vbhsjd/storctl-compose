@@ -25,7 +25,7 @@ Edit:
 Put offline 1823 driver packages and `storctl-artifacts.json` under `drivers/`, then run one host first:
 
 ```bash
-./storctl-compose copy --limit node-57-122
+./storctl-compose copy --limit node-57-122 --timeout 60m
 ./storctl-compose install-driver --limit node-57-122
 ./storctl-compose apply --limit node-57-122
 ./storctl-compose check --limit node-57-122
@@ -49,6 +49,7 @@ Then run all hosts:
 --config compose.yaml
 --report-dir reports
 --concurrency 30
+--timeout 30m
 ```
 
 Useful flags:
@@ -56,6 +57,9 @@ Useful flags:
 ```bash
 ./storctl-compose apply --limit node-a,node-b
 ./storctl-compose apply --concurrency 50
+./storctl-compose copy --timeout 60m
+./storctl-compose report --json
+./storctl-compose report --verbose
 ./storctl-compose install-driver --upgrade-firmware
 ./storctl-compose version --json
 ```
@@ -112,3 +116,5 @@ rdma link
 `hinicadm3 -i` usually expects `hinic0`, not `eth0/enp...`. Use `hinicadm3 info` to map `hinic0` ports to `NIC:<linux-nic>`.
 
 If a local NIC is administratively down, `apply` tries `ip link set dev <nic> up`. Switch shutdown, bad optics, or cable issues are reported but not changed.
+
+If `copy` appears stuck, large driver directories or slow lab links are the usual cause. Increase the per-host timeout with `./storctl-compose copy --timeout 60m`.

@@ -147,6 +147,9 @@ func NormalizeOptions(opts Options, cfg Config) Options {
 	if opts.Concurrency > MaxConcurrency {
 		opts.Concurrency = MaxConcurrency
 	}
+	if opts.Timeout == 0 {
+		opts.Timeout = DefaultTimeout
+	}
 	if opts.ReportDir == "" {
 		opts.ReportDir = cfg.ReportDir
 	}

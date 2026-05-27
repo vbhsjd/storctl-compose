@@ -5,6 +5,7 @@ import "time"
 const (
 	DefaultConcurrency = 30
 	MaxConcurrency     = 50
+	DefaultTimeout     = 30 * time.Minute
 )
 
 type HostsFile struct {
@@ -39,6 +40,7 @@ type Options struct {
 	ReportDir       string
 	Limit           string
 	Concurrency     int
+	Timeout         time.Duration
 	UpgradeFirmware bool
 }
 

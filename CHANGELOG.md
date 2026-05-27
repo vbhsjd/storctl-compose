@@ -19,6 +19,8 @@
   diagnostics and per-NIC probe logs.
 - Pre-apply `storctl check --json` guard so already-mounted hosts are skipped
   instead of being reconfigured.
+- Per-host `--timeout` for copy, install-driver, apply, and check. SFTP uploads
+  now close the SSH/SFTP connection when the timeout is hit.
 
 ### Changed
 
@@ -33,3 +35,6 @@
   MTU rebuild handling.
 - Release bundle now embeds `storctl` with NFSv3 TCP fallback defaults for lab
   storage servers that reject NFSv4.1 TCP.
+- `storctl-compose report` now defaults to a compact human summary; detailed
+  counters moved behind `--verbose`, and full machine output is available with
+  `--json`.
