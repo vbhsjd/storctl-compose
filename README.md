@@ -6,6 +6,8 @@
 
 不需要 Ansible、sshpass、Python，也不需要提前知道存储网卡名。
 
+普通用户只需要跑 `copy`、`apply`、`report` 时，可以直接看 [用户使用说明](docs/user-wiki.md)。
+
 ## 推荐安装方式
 
 用 GitHub Release zip，当成离线安装包使用。暂时不做 RPM/DEB。
