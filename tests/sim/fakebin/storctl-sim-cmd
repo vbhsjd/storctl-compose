@@ -74,6 +74,10 @@ case "${cmd}" in
     ;;
 
   nmcli)
+    if [[ "${1:-}" == "-t" && "${2:-}" == "-f" && "${3:-}" == "RUNNING" && "${4:-}" == "general" ]]; then
+      echo "running"
+      exit 0
+    fi
     if [[ "${1:-}" == "-t" && "${2:-}" == "-f" && "${3:-}" == "NAME" && "${4:-}" == "con" && "${5:-}" == "show" ]]; then
       name="${6:-}"
       [[ -f "${conns_file}" ]] && grep -Fxq "${name}" "${conns_file}"

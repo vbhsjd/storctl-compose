@@ -39,20 +39,8 @@ func (a *App) Copy(ctx context.Context, hosts HostsFile, cfg Config, opts Option
 	}
 	return a.runHosts(ctx, selected, cfg, opts, "copy", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "copy")
-		if host.User != "root" {
-			if err := copyWithSudo(ctx, host, remote, cfg, storctlBytes); err != nil {
-				return finishFail(result, "copy_sudo_failed", err.Error())
-			}
-			return finishOK(result, "copied")
-		}
-		if err := remote.UploadBytes(ctx, cfg.RemoteBin, storctlBytes, 0755); err != nil {
-			return finishFail(result, "copy_storctl_failed", err.Error())
-		}
-		if err := remote.UploadFile(ctx, cfg.ProfileFile, cfg.RemoteProfile, 0644); err != nil {
-			return finishFail(result, "copy_profile_failed", err.Error())
-		}
-		if err := uploadDir(ctx, remote, cfg.ArtifactSrc, cfg.RemoteArtifact); err != nil {
-			return finishFail(result, "copy_artifacts_failed", err.Error())
+		if err := copyToHost(ctx, host, remote, cfg, storctlBytes); err != nil {
+			return finishFail(result, copyFailureCode(err), err.Error())
 		}
 		return finishOK(result, "copied")
 	})
@@ -78,8 +66,21 @@ func (a *App) InstallDriver(ctx context.Context, hosts HostsFile, cfg Config, op
 }
 
 func (a *App) Apply(ctx context.Context, hosts HostsFile, cfg Config, opts Options) []HostResult {
+	selected := FilterHosts(hosts.Hosts, opts.Limit)
+	storctlBytes, err := loadStorctlBytes(cfg)
+	if err != nil {
+		results := failAll(selected, "apply", "storctl_asset", err.Error())
+		for _, result := range results {
+			a.printResult(result)
+			_ = writeHostResult(NormalizeOptions(opts, cfg).ReportDir, result)
+		}
+		return results
+	}
 	return a.runHosts(ctx, hosts.Hosts, cfg, opts, "apply", func(ctx context.Context, host Host, remote Remote) HostResult {
 		result := startResult(host, "apply")
+		if err := copyToHost(ctx, host, remote, cfg, storctlBytes); err != nil {
+			return finishFail(result, copyFailureCode(err), err.Error())
+		}
 		if ok, degraded, msg := precheckMounted(ctx, remote, cfg, opts.ReportDir, host); ok {
 			result.Degraded = degraded
 			return finishOK(result, msg)
@@ -117,6 +118,42 @@ func (a *App) Apply(ctx context.Context, hosts HostsFile, cfg Config, opts Optio
 		}
 		return finishFail(result, "all_candidate_nics_failed", last)
 	})
+}
+
+type copyStageError struct {
+	code string
+	err  error
+}
+
+func (e copyStageError) Error() string {
+	return e.err.Error()
+}
+
+func copyFailureCode(err error) string {
+	var stage copyStageError
+	if errors.As(err, &stage) {
+		return stage.code
+	}
+	return "copy_failed"
+}
+
+func copyToHost(ctx context.Context, host Host, remote Remote, cfg Config, storctlBytes []byte) error {
+	if host.User != "root" {
+		if err := copyWithSudo(ctx, host, remote, cfg, storctlBytes); err != nil {
+			return copyStageError{code: "copy_sudo_failed", err: err}
+		}
+		return nil
+	}
+	if err := remote.UploadBytes(ctx, cfg.RemoteBin, storctlBytes, 0755); err != nil {
+		return copyStageError{code: "copy_storctl_failed", err: err}
+	}
+	if err := remote.UploadFile(ctx, cfg.ProfileFile, cfg.RemoteProfile, 0644); err != nil {
+		return copyStageError{code: "copy_profile_failed", err: err}
+	}
+	if err := uploadDir(ctx, remote, cfg.ArtifactSrc, cfg.RemoteArtifact); err != nil {
+		return copyStageError{code: "copy_artifacts_failed", err: err}
+	}
+	return nil
 }
 
 func (a *App) Check(ctx context.Context, hosts HostsFile, cfg Config, opts Options) []HostResult {

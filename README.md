@@ -6,7 +6,7 @@
 
 不需要 Ansible、sshpass、Python，也不需要提前知道存储网卡名。
 
-普通用户只需要跑 `copy`、`apply`、`report` 时，可以直接看 [用户使用说明](docs/user-wiki.md)。
+普通用户通常只需要跑 `apply`、`report`。`apply` 会自动完成上传；需要单独排查上传问题时再运行 `copy`。更短说明见 [用户使用说明](docs/user-wiki.md)。
 
 ## 推荐安装方式
 
@@ -208,7 +208,6 @@ sha256sum drivers/SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 先挑一台机器试跑：
 
 ```bash
-./storctl-compose copy --limit node-57-122 --timeout 60m
 ./storctl-compose install-driver --limit node-57-122
 ```
 
@@ -225,7 +224,6 @@ sha256sum drivers/SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 ## 7. 批量执行
 
 ```bash
-./storctl-compose copy
 ./storctl-compose install-driver
 ./storctl-compose apply
 ./storctl-compose check
@@ -238,11 +236,10 @@ sha256sum drivers/SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 ./storctl-compose install-driver --upgrade-firmware
 ```
 
-驱动目录很大、内网慢、`copy` 看起来卡住时，可以临时调大单机超时：
+`apply` 会先同步 `storctl`、profile 和 `drivers/`。驱动目录很大、内网慢、上传看起来卡住时，可以临时调大单机超时：
 
 ```bash
-./storctl-compose copy --timeout 60m
-./storctl-compose apply --timeout 30m
+./storctl-compose apply --timeout 60m
 ```
 
 默认并发 30，最大 50：
@@ -262,7 +259,6 @@ sha256sum drivers/SDK_LINUX-17.12.5.0-openEuler22.03SP4-aarch64.tar.gz
 命令输出里看到类似：
 
 ```text
-OK node-57-122 copy copied
 OK node-57-122 install-driver driver installed
 OK node-57-122 apply selected-nic enp23s0f1
 OK node-57-122 check checked
@@ -336,11 +332,11 @@ reports/<host>/nic-probe/<nic>.hilink-count.txt
 
 `ssh_unreachable`：网络不可达，先查控制机到目标 IP 的路由。
 
-`connection_lost`：SSH/SFTP 中途断开，可以单台重跑 `copy --limit <ip> --timeout 60m`。
+`connection_lost`：SSH/SFTP 中途断开，可以单台重跑 `apply --limit <ip> --timeout 60m`。
 
-`networkmanager_down`：目标机 NetworkManager 没运行，先在目标机执行 `systemctl enable --now NetworkManager`。
+`networkmanager_down`：目标机 NetworkManager 没运行，且自动启动失败。先在目标机执行 `systemctl enable --now NetworkManager`。
 
-`timeout`：单台机器某个阶段超过超时限制。`copy` 阶段通常是驱动目录太大或链路慢，可以用 `./storctl-compose copy --timeout 60m`。
+`timeout`：单台机器某个阶段超过超时限制。`apply` 会先上传驱动目录；如果目录太大或链路慢，可以用 `./storctl-compose apply --timeout 60m`。
 
 `mount_failed`：NFS 挂载失败，看 `reports/<host>/attempts/` 里的原始 mount 输出。
 

@@ -201,6 +201,9 @@ func TestApplyTriesNextCandidate(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "node", "attempts", "enp23s0f0.out")); err != nil {
 		t.Fatal(err)
 	}
+	if string(r.uploads["/usr/local/bin/storctl"]) != "storctl-bin" {
+		t.Fatalf("apply did not upload storctl before running: %+v", r.uploads)
+	}
 }
 
 func TestApplySkipsWhenAlreadyMounted(t *testing.T) {
@@ -475,8 +478,18 @@ func containsRun(runs []string, want string) bool {
 }
 
 func testConfig(reportDir string) Config {
+	storctl := filepath.Join(reportDir, "storctl")
+	profile := filepath.Join(reportDir, "profiles.json")
+	drivers := filepath.Join(reportDir, "drivers")
+	_ = os.WriteFile(storctl, []byte("storctl-bin"), 0755)
+	_ = os.WriteFile(profile, []byte("{}"), 0644)
+	_ = os.MkdirAll(drivers, 0755)
+	_ = os.WriteFile(filepath.Join(drivers, "storctl-artifacts.json"), []byte("{}"), 0644)
 	return Config{
 		Profile:          "c4",
+		StorctlBin:       storctl,
+		ProfileFile:      profile,
+		ArtifactSrc:      drivers,
 		RemoteBin:        "/usr/local/bin/storctl",
 		RemoteProfile:    "/etc/storctl/profiles.json",
 		RemoteArtifact:   "/root/storage_pkgs",

@@ -25,7 +25,6 @@ Edit:
 Put offline 1823 driver packages and `storctl-artifacts.json` under `drivers/`, then run one host first:
 
 ```bash
-./storctl-compose copy --limit node-57-122 --timeout 60m
 ./storctl-compose install-driver --limit node-57-122
 ./storctl-compose apply --limit node-57-122
 ./storctl-compose check --limit node-57-122
@@ -35,7 +34,6 @@ Put offline 1823 driver packages and `storctl-artifacts.json` under `drivers/`, 
 Then run all hosts:
 
 ```bash
-./storctl-compose copy
 ./storctl-compose install-driver
 ./storctl-compose apply
 ./storctl-compose check
@@ -57,7 +55,7 @@ Useful flags:
 ```bash
 ./storctl-compose apply --limit node-a,node-b
 ./storctl-compose apply --concurrency 50
-./storctl-compose copy --timeout 60m
+./storctl-compose apply --timeout 60m
 ./storctl-compose report --json
 ./storctl-compose report --verbose
 ./storctl-compose report --all
@@ -125,4 +123,4 @@ rdma link
 
 If a local NIC is administratively down, `apply` tries `ip link set dev <nic> up`. Switch shutdown, bad optics, or cable issues are reported but not changed.
 
-If `copy` appears stuck, large driver directories or slow lab links are the usual cause. Increase the per-host timeout with `./storctl-compose copy --timeout 60m`.
+`apply` uploads `storctl`, the profile, and `drivers/` before configuring the host. If upload appears stuck, large driver directories or slow lab links are the usual cause. Increase the per-host timeout with `./storctl-compose apply --timeout 60m`.

@@ -328,7 +328,7 @@ run_suite() {
   run_step "oe22sp4-1823-rdma" "apply" ok "${bin}" apply --profile c4 --nic enp23s0f1 --mgmt-ip 80.5.17.113 --nic-type 1823 --qos apply
   assert_file_contains "oe22sp4-1823-rdma" "var/log/storctl-sim/commands.log" 'nmcli con mod data0.172' "nmcli vlan modified"
   assert_file_contains "oe22sp4-1823-rdma" "var/log/storctl-sim/commands.log" 'mount .*proto=rdma' "rdma mount called"
-  assert_file_contains "oe22sp4-1823-rdma" "etc/systemd/system/mnt-share.automount" 'Where=/mnt/share' "systemd automount written"
+  assert_file_contains "oe22sp4-1823-rdma" "etc/fstab" '172.27.1.1:/Share /mnt/share nfs .*proto=rdma' "fstab mount persistence written"
   run_step "oe22sp4-1823-rdma" "check-json" ok "${bin}" check --json
   assert_report_contains "oe22sp4-1823-rdma" "check-json" '"code": "mount_rdma"' "check reports rdma mount"
 

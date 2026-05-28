@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.8
 
 ### Added
 
@@ -32,6 +32,13 @@
 
 ### Changed
 
+- `storctl-compose apply` now uploads `storctl`, the selected profile, and the
+  local `drivers/` directory before probing NICs and running remote apply, so
+  the normal field workflow can start directly from `apply`.
+- The embedded `storctl` now attempts to start NetworkManager before VLAN
+  changes when NetworkManager is installed but not running.
+- The embedded `storctl` now persists NFS mounts through `/etc/fstab` only and
+  no longer creates systemd `.mount/.automount` units.
 - Ansible wrapper and playbooks moved to `legacy/ansible`; the Go binary is now the primary workflow.
 - Offline bundle helper now packages `storctl-compose` instead of a standalone target-side `storctl` binary.
 - Public `compose.yaml` no longer exposes `nic_type`; `storctl-compose` is fixed to 1823 orchestration.
