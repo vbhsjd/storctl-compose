@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.9
+
+### Changed
+
+- `storctl-compose apply` now runs target-side mount reconciliation even when
+  `storctl check --json` reports that all configured mounts are already
+  mounted.
+- This fixes old hosts that would otherwise skip migration cleanup and keep
+  legacy systemd `.mount/.automount` units after moving mount persistence to
+  `/etc/fstab`.
+- The embedded `storctl` includes `reconcile-mounts`, which preserves TCP
+  fallback fstab options when a host is already mounted with `proto=tcp`.
+
 ## v0.1.8
 
 ### Added

@@ -208,6 +208,8 @@ func TestApplyTriesNextCandidate(t *testing.T) {
 
 func TestApplySkipsWhenAlreadyMounted(t *testing.T) {
 	dir := t.TempDir()
+	cfg := testConfig(dir)
+	host := Host{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}
 	r := &fakeRemote{outputs: map[string]CommandResult{
 		"'/usr/local/bin/storctl' check --json": {Stdout: `{
   "state": {"mounts": [{"MountPoint": "/mnt/share"}, {"MountPoint": "/mnt/weight"}]},
@@ -216,14 +218,15 @@ func TestApplySkipsWhenAlreadyMounted(t *testing.T) {
     {"name": "mount:/mnt/weight", "code": "mount_rdma", "message": "proto=rdma"}
   ]
 }`},
+		reconcileMountsCommand(cfg, host): {Stdout: "OK mount persistence fstab /mnt/share\n"},
 	}, errs: map[string]error{}}
 	app := &App{Dialer: fakeDialer{remotes: map[string]*fakeRemote{"node": r}}, Out: os.Stdout}
-	results := app.Apply(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}}}, testConfig(dir), Options{ReportDir: dir, Concurrency: 1})
+	results := app.Apply(context.Background(), HostsFile{Hosts: []Host{host}}, cfg, Options{ReportDir: dir, Concurrency: 1})
 	if len(results) != 1 || results[0].Status != "OK" || results[0].Message != "already mounted" {
 		t.Fatalf("unexpected results: %+v", results)
 	}
-	if len(r.runs) != 1 || r.runs[0] != "'/usr/local/bin/storctl' check --json" {
-		t.Fatalf("apply should only run check: %+v", r.runs)
+	if len(r.runs) != 2 || r.runs[0] != "'/usr/local/bin/storctl' check --json" || r.runs[1] != reconcileMountsCommand(cfg, host) {
+		t.Fatalf("apply should run check then reconcile mounts: %+v", r.runs)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "node", "precheck.json")); err != nil {
 		t.Fatal(err)
@@ -252,6 +255,8 @@ func TestApplyDoesNotSkipPartialMount(t *testing.T) {
 
 func TestApplySkipsExistingTCPWhenFallbackAllowed(t *testing.T) {
 	dir := t.TempDir()
+	cfg := testConfig(dir)
+	host := Host{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}
 	r := &fakeRemote{outputs: map[string]CommandResult{
 		"'/usr/local/bin/storctl' check --json": {Stdout: `{
   "state": {"degraded": true, "mounts": [{"MountPoint": "/mnt/share"}]},
@@ -259,9 +264,10 @@ func TestApplySkipsExistingTCPWhenFallbackAllowed(t *testing.T) {
     {"name": "mount:/mnt/share", "code": "mount_not_rdma", "message": "nfs4 rw,proto=tcp"}
   ]
 }`},
+		reconcileMountsCommand(cfg, host): {Stdout: "WARN tcp fallback\n"},
 	}, errs: map[string]error{}}
 	app := &App{Dialer: fakeDialer{remotes: map[string]*fakeRemote{"node": r}}, Out: os.Stdout}
-	results := app.Apply(context.Background(), HostsFile{Hosts: []Host{{Name: "node", IP: "80.5.21.122", User: "root", Password: "x"}}}, testConfig(dir), Options{ReportDir: dir, Concurrency: 1})
+	results := app.Apply(context.Background(), HostsFile{Hosts: []Host{host}}, cfg, Options{ReportDir: dir, Concurrency: 1})
 	if len(results) != 1 || results[0].Status != "OK" || !results[0].Degraded || results[0].Message != "already mounted degraded tcp-fallback" {
 		t.Fatalf("unexpected results: %+v", results)
 	}

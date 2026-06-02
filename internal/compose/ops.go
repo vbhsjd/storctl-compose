@@ -82,6 +82,10 @@ func (a *App) Apply(ctx context.Context, hosts HostsFile, cfg Config, opts Optio
 			return finishFail(result, copyFailureCode(err), err.Error())
 		}
 		if ok, degraded, msg := precheckMounted(ctx, remote, cfg, opts.ReportDir, host); ok {
+			out, err := remote.Run(ctx, reconcileMountsCommand(cfg, host))
+			if err != nil {
+				return finishFail(result, "mount_reconcile_failed", trimMessage(out.Stdout+out.Stderr))
+			}
 			result.Degraded = degraded
 			return finishOK(result, msg)
 		}
@@ -367,6 +371,18 @@ func applyCommand(cfg Config, host Host, nic string) string {
 		"--nic-type", "1823",
 		"--mgmt-ip", shellQuote(host.IP),
 		"--qos", shellQuote(cfg.QoS),
+	}
+	if cfg.AllowTCPFallback {
+		parts = append(parts, "--allow-tcp-fallback")
+	}
+	return strings.Join(parts, " ")
+}
+
+func reconcileMountsCommand(cfg Config, host Host) string {
+	parts := []string{
+		remoteStorctl(host, cfg), "reconcile-mounts",
+		"--profile-file", shellQuote(cfg.RemoteProfile),
+		"--profile", shellQuote(cfg.Profile),
 	}
 	if cfg.AllowTCPFallback {
 		parts = append(parts, "--allow-tcp-fallback")
