@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.10
+
+### Changed
+
+- The embedded `storctl` now adds `_netdev,nofail` to every NFS entry written
+  to `/etc/fstab`.
+- Existing fstab entries are updated automatically during normal apply and the
+  already-mounted reconciliation path.
+
 ## v0.1.9
 
 ### Changed
