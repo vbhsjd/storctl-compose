@@ -88,7 +88,7 @@ qos: off
 - 如果 NetworkManager 没运行，目标机会尝试启动它。
 - 配置 VLAN 和存储网络 IP。
 - 挂载管理员配置好的 NFS 存储目录。
-- 挂载持久化写入 `/etc/fstab`，并带 `_netdev,nofail`，避免开机时存储网络尚未就绪而阻塞启动。
+- 挂载持久化写入 `/etc/fstab`，并带 `_netdev,nofail`，避免开机时存储网络尚未就绪而阻塞启动；写入后会触发 `systemctl daemon-reload` 和 `mount -a -t nfs`。
 - 已经挂载成功的机器会跳过网络重配，但仍会自动清理旧的 systemd automount，并确认 `/etc/fstab` 持久化。
 
 如果驱动目录或网络较慢，可以加大超时：

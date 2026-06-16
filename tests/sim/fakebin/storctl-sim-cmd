@@ -208,6 +208,9 @@ case "${cmd}" in
     ;;
 
   mount)
+    if [[ "${1:-}" == "-a" ]]; then
+      exit 0
+    fi
     opts=""
     source=""
     target=""

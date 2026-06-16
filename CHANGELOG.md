@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.11
+
+### Changed
+
+- The embedded `storctl` now runs `systemctl daemon-reload` and
+  `mount -a -t nfs` after changing NFS entries in `/etc/fstab`.
+- The simulation fake `mount` command now treats `mount -a` as a no-op so the
+  integration suite covers this activation path.
+
 ## v0.1.10
 
 ### Changed
