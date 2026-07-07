@@ -159,10 +159,13 @@ IP 推导例子：
 
 ```text
 管理 IP: 80.5.21.122
+gateway: 172.27.0.1
 third_octet_map: "21": 3
 prefix: 18
 生成 data IP: 172.27.3.122/18
 ```
+
+data IP 的前两段取自 `gateway`。例如 gateway 是 `10.10.0.1` 时，同样的映射会生成 `10.10.3.122/18`。
 
 如果某台机器不符合这个规律，先不要批量跑，单独用 `storctl` 或单独 profile 处理。
 

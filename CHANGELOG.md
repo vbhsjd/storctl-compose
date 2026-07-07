@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.12
+
+### Fixed
+
+- The embedded `storctl` now derives profile data IPs from the gateway network
+  prefix instead of always using `172.27`.
+- Profiles such as gateway `10.10.0.1`, management IP `90.90.97.6`, and
+  `third_octet_map: {"97": 2}` now correctly produce `10.10.2.6/16`.
+
 ## v0.1.11
 
 ### Changed
